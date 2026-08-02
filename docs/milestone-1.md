@@ -1,5 +1,11 @@
 # Milestone 1 — Single Skill, End to End
 
+> **Status: In progress.** Repository scaffolding (project structure,
+> `pyproject.toml`, Ruff/mypy/pytest config, a CLI stub printing
+> `Buildrail initialized.`) is complete and committed. None of the
+> business logic below — the review skill, the Provider Gateway, the
+> Anthropic adapter, artifact writing — has been implemented yet.
+
 > **Revision note:** this milestone was approved before
 > `docs/artifacts.md`, `docs/skills.md`, `docs/provider-interface.md`,
 > and `docs/testing.md` existed. It's updated here to use their
@@ -14,8 +20,9 @@ Gateway → Artifact — with the smallest possible real feature. This is
 the skeleton every later feature will reuse, so it must be built
 correctly, not quickly.
 
-No later phase (skill registry, pipelines, second provider) starts
-until this milestone runs end to end and is approved.
+No later phase (Skill Registry, Pipelines, Second AI Provider — see
+`docs/roadmap.md`) starts until this milestone runs end to end and is
+approved.
 
 ## Scope
 

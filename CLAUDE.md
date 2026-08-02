@@ -11,13 +11,24 @@ default and treats cloud services as optional, swappable backends — never
 as a requirement.
 
 See `docs/architecture.md` for the full design and `docs/roadmap.md` for
-sequencing. `docs/milestone-1.md` is the current unit of work.
+sequencing. `docs/milestone-1.md` is the current unit of work. The full
+engineering specification — `docs/artifacts.md`, `docs/skills.md`,
+`docs/provider-interface.md`, `docs/testing.md`, `docs/project-layout.md`,
+`docs/engineering-principles.md` — is binding wherever it's more specific
+than this file. `docs/git-workflow.md` covers commit/branch/release
+conventions, and `CONTRIBUTING.md` covers the day-to-day dev workflow.
 
 ## Project Status
 
-Design phase. No implementation exists yet. Do not scaffold source code,
-add dependencies, or generate implementation until a milestone doc has
-been approved by the user.
+**Milestone 1 (in progress).** Repository scaffolding is complete and
+committed: project structure, `pyproject.toml`, Ruff/mypy/pytest config,
+and a CLI stub that prints `Buildrail initialized.`. Milestone 1's actual
+business logic — the review skill, the Provider Gateway, the Anthropic
+adapter, artifact writing — has **not** been implemented yet. Do not
+implement it, add dependencies beyond what a given approved step
+requires, or scaffold further ahead of the current step without the
+user's approval. See `docs/milestone-1.md` for exact scope and
+acceptance criteria, and `docs/roadmap.md` for phase-by-phase status.
 
 ## Core Design Rules
 
@@ -54,3 +65,41 @@ These constraints are non-negotiable and should shape every future change:
   cloud-hosted.
 - Favor small, complete, reviewable increments over large speculative
   changes.
+
+## Commit Boundaries
+
+Recommending commits is a proactive, default part of working in this
+repository — the user shouldn't have to ask. Full policy (cadence,
+message style, branching, tags, releases) lives in
+`docs/git-workflow.md`; this section is the operational rule for any AI
+agent acting in this repo.
+
+- **Recognize natural commit boundaries.** A boundary is reached whenever
+  a self-contained, working slice is done: a scaffolding step, a doc
+  revision pass, a passing test suite after a change, a bug fix —
+  anything that leaves the repository clean and demonstrable, per the
+  "one complete vertical slice at a time" principle
+  (`docs/engineering-principles.md` §3).
+- **Recommend commits automatically, without being asked.** When a
+  boundary is reached, say so plainly: **"This is a good place to
+  commit."** Don't wait to be prompted.
+- **Never execute git commands that change repository or remote state.**
+  No `git add`, `commit`, `push`, `reset`, `checkout`, branch deletion,
+  or tagging — ever, regardless of how routine it seems. Read-only
+  commands (`git status`, `git diff`, `git log`, `git ls-files`) are
+  fine to run freely to inform a recommendation.
+- **Inspect for secrets before recommending a commit.** Check
+  changed/staged/untracked files against `docs/git-workflow.md`'s
+  security checklist (secrets, keys, tokens, credentials, absolute local
+  paths, machine-specific config, virtual environments, generated
+  artifacts). If anything looks unsafe, stop and explain why instead of
+  recommending the commit.
+- **At every commit boundary, provide:**
+  1. A recommended commit message (imperative mood).
+  2. A summary of `git status` — what changed, what's untracked.
+  3. The exact `git add` / `git commit` commands to run. Only include a
+     `git push` recommendation when a push is actually appropriate
+     (see `docs/git-workflow.md`) — never suggest it reflexively.
+- **Stop after each clean implementation milestone.** Land one coherent
+  slice, recommend the commit, and wait for approval before starting the
+  next one — don't chain unrelated changes into a single unreviewed pass.

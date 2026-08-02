@@ -1,0 +1,21 @@
+# Normalize line endings to LF in the repository. Git still checks files
+# out as LF on every platform (eol=lf), which is fine for Windows tooling
+# here since nothing in this project (Python, TOML, Markdown, YAML, JSON)
+# requires CRLF to function correctly on Windows. Git's text auto-detection
+# is reliable for all file types actually in this repo, so one blanket
+# rule covers everything — no need to repeat it per extension.
+* text=auto eol=lf
+
+# Native Windows scripts, if any are ever added, keep CRLF for tools that
+# expect it (e.g. cmd.exe batch files).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never let Git normalize binaries.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary

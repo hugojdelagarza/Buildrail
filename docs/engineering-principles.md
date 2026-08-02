@@ -48,8 +48,8 @@ convenience. This document set is that principle applied to itself.
 ## 6. Provider neutrality
 
 No core or skill code imports a vendor SDK. Enforced structurally: only
-`src/providers/adapters/*` may import a vendor SDK, and only the
-gateway's registry may import an adapter (`docs/project-layout.md`).
+`src/buildrail/providers/adapters/*` may import a vendor SDK, and only
+the gateway's registry may import an adapter (`docs/project-layout.md`).
 Skills reach a provider only through a loopback endpoint
 (`docs/skills.md` §5.3) — they cannot import a vendor SDK even if they
 wanted to, because they never run in the same process as one.
@@ -94,11 +94,11 @@ here means "explainable," not "bit-identical on rerun."
 Skills never hold real provider credentials — they get a run-scoped
 loopback token instead (`docs/skills.md` §5.3). Secrets come only from
 the environment, never from a checked-in config file
-(`docs/project-layout.md`, `src/config` rules). This principle is
+(`docs/project-layout.md`, `src/buildrail/config` rules). This principle is
 explicitly **not** fully satisfied yet: subprocess skills aren't
 sandboxed against arbitrary filesystem/network access beyond the
-provider loopback. That gap is named, not hidden — see the closing risk
-list in this session's summary.
+provider loopback. That gap is named, not hidden — see `docs/skills.md`
+§9 and `docs/architecture.md` §6.
 
 ## 12. Documentation-first architecture
 
@@ -138,5 +138,6 @@ When a design decision doesn't obviously follow from
 check it against this list before improvising. If a principle here
 would be violated, that's a signal to write a short doc update
 explaining the tradeoff — the same way `docs/provider-interface.md` §3
-and `docs/skills.md` §1 walk through the options this session — not to
-silently pick whichever is more convenient in the moment.
+and `docs/skills.md` §1 walk through the available options and state a
+reasoned choice — not to silently pick whichever is more convenient in
+the moment.

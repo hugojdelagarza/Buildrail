@@ -10,7 +10,7 @@ testing contracts referenced throughout are fully specified in
 `docs/testing.md` — phases below implement against those, they don't
 redesign them.
 
-## Phase 0 — Design (current)
+## Phase 0 — Design — **Complete**
 
 - Define architecture, module boundaries, and constraints.
 - No implementation.
@@ -20,16 +20,19 @@ redesign them.
   `docs/provider-interface.md`, `docs/testing.md`,
   `docs/project-layout.md`, `docs/engineering-principles.md`).
 
-## Phase 1 — Single Skill, End to End
+## Phase 1 — Single Skill, End to End — **In progress (current)**
 
 Prove the full vertical slice works with the smallest possible surface:
 one CLI command, running one real skill, through the Core Engine, with
 one AI provider adapter wired through the Provider Gateway, writing one
 artifact.
 
+- Repository scaffolding (project structure, tooling, CLI stub) is
+  complete. The skill, Provider Gateway, and adapter have not been
+  implemented yet.
 - Detailed in `docs/milestone-1.md`.
 
-## Phase 2 — Skill Registry
+## Phase 2 — Skill Registry — **Not started**
 
 - Support more than one skill, discovered and listed by the CLI
   (`buildrail skill list`).
@@ -38,41 +41,42 @@ artifact.
   the format from scratch.
 - No pipelines yet — skills still run individually.
 
-## Phase 3 — Pipelines
+## Phase 3 — Pipelines — **Not started**
 
 - Introduce the Pipeline Runner: a named, linear sequence of skills
   with output from one step available to the next.
 - CLI gains `buildrail run <pipeline>`.
 - Still single AI provider; still local-first.
 
-## Phase 4 — Second AI Provider
+## Phase 4 — Second AI Provider — **Not started**
 
 - Add a second provider adapter behind the existing Provider Gateway
   interface, proving the abstraction holds without modifying the Core
   Engine or any existing skill.
 - Provider selection becomes a config value, not a code change.
 
-## Phase 5 — Code Review Feature (complete)
+## Phase 5 — Code Review Feature, Fully Built Out — **Not started**
 
 - Build out the code review capability as a first-class pipeline:
   diff intake → review skill(s) → `review` artifact
   (`docs/artifacts.md` §1).
 - This is the first feature area called out in the project's original
-  goals; treat it as the reference example for what a "complete
-  feature" looks like end to end.
+  goals; treat it as the reference example for what a fully-built
+  feature looks like end to end (as opposed to Milestone 1's minimal
+  single-skill slice).
 
-## Phase 6 — Documentation Generation Feature
+## Phase 6 — Documentation Generation Feature — **Not started**
 
 - A pipeline that generates or updates docs for a module/project,
   reusing the skill and provider infrastructure built for code review.
 
-## Phase 7 — Testing Workflows
+## Phase 7 — Testing Workflows — **Not started**
 
 - A pipeline that runs a project's tests and produces a `test-report`
   artifact (failures, flaky signals, coverage deltas where available)
   — no new orchestration concepts, just new skills.
 
-## Phase 8 — Optional Cloud/Integration Layer
+## Phase 8 — Optional Cloud/Integration Layer — **Not started**
 
 - Only after the local-first core is proven across multiple features:
   optional integrations (e.g. posting a report to GitHub/Slack) as

@@ -38,8 +38,8 @@ Design constraints (see `CLAUDE.md` for the enforced version of these rules):
                      │      Core Engine      │   local-first, no network
                      │  ─────────────────── │
                      │  Pipeline Runner      │
-                     │  Skill Registry/Loader│
-                     │  Run State / Reports  │
+                     │  Skill Registry       │
+                     │  Run State / Artifacts│
                      └───┬───────────────┬───┘
                          │               │
               ┌──────────▼───┐     ┌─────▼───────────┐
@@ -78,7 +78,7 @@ responsibilities, kept separate because they change for different reasons:
   linear; graph support only if/when a real use case needs it) sequence
   of skill invocations. Owns retries, step ordering, and passing output
   from one step to the next.
-- **Skill Registry/Loader** — discovers skills (from `skills/` and any
+- **Skill Registry** — discovers skills (from `skills/` and any
   project-local skill directory), validates their manifest, and exposes
   them to the Pipeline Runner by name. Does not know what a skill does
   internally.
