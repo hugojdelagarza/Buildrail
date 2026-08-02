@@ -9,12 +9,12 @@ of truth. Pipelines, skills, and workflows run locally by default; AI
 providers and cloud services are optional, swappable backends rather than
 hard requirements.
 
-> **Status:** Milestone 1 in progress. Repository scaffolding (project
-> structure, tooling, CLI stub) is complete; Milestone 1's business
-> logic (the review skill, Provider Gateway, Anthropic adapter) has not
-> been implemented yet. See [docs/roadmap.md](docs/roadmap.md) for what's
-> planned and [docs/milestone-1.md](docs/milestone-1.md) for the current
-> unit of work.
+> **Status:** Milestone 1 in progress. Repository scaffolding and the
+> Core Engine skeleton (CLI → CoreEngine → Result → CLI output) are
+> complete; Milestone 1's business logic (the review skill, Provider
+> Gateway, Anthropic adapter) has not been implemented yet. See
+> [docs/roadmap.md](docs/roadmap.md) for what's planned and
+> [docs/milestone-1.md](docs/milestone-1.md) for the current unit of work.
 
 ## Why Buildrail
 
@@ -56,7 +56,7 @@ plugged in — never baked in.
 
 ```
 buildrail/
-├── src/        # CLI stub implemented; Core Engine and Provider Gateway not yet built
+├── src/        # CLI + Core Engine skeleton implemented; Provider Gateway not yet built
 ├── skills/     # reusable skill definitions (none yet — first one lands in Milestone 1)
 ├── plugins/    # optional cloud/integration plugins (later phase)
 ├── tests/      # test suite

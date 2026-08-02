@@ -21,8 +21,10 @@ conventions, and `CONTRIBUTING.md` covers the day-to-day dev workflow.
 ## Project Status
 
 **Milestone 1 (in progress).** Repository scaffolding is complete and
-committed: project structure, `pyproject.toml`, Ruff/mypy/pytest config,
-and a CLI stub that prints `Buildrail initialized.`. Milestone 1's actual
+committed: project structure, `pyproject.toml`, Ruff/mypy/pytest config.
+The Core Engine skeleton exists (`src/buildrail/core`: a `CoreEngine`
+class returning a placeholder `Result`), and the CLI (`src/buildrail/cli.py`)
+delegates to it rather than hardcoding output. Milestone 1's actual
 business logic — the review skill, the Provider Gateway, the Anthropic
 adapter, artifact writing — has **not** been implemented yet. Do not
 implement it, add dependencies beyond what a given approved step

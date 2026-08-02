@@ -34,13 +34,16 @@ and adding it now would be exactly the kind of directory that exists
 "because we might want it" rather than because something needs it —
 add it when a phase actually produces example projects worth shipping.
 
-**Current state (Milestone 1 scaffolding):** only
-`src/buildrail/__init__.py`, `src/buildrail/cli.py`, and
-`src/buildrail/__main__.py` exist — a single flat module, not yet the
-subdivided `cli/`, `core/`, `artifacts/`, `providers/`, `config/`
-packages shown above. Those subdivisions are the target shape; each is
-created (as a real package, not a stub) only when the phase that needs
-it actually lands, per the ownership rules below — not all at once.
+**Current state (Milestone 1, Core Engine skeleton):**
+`src/buildrail/cli.py` is a single flat module (no `cli/` package yet —
+there's only one command, so there's nothing to subdivide).
+`src/buildrail/core/` exists with one module, `engine.py`, holding
+`CoreEngine` and `Result`; it has no Pipeline Runner, Skill Registry, or
+Run State yet — those land when a real skill exists to run.
+`artifacts/`, `providers/`, and `config/` are not created yet. Each
+subdivision above is created (as a real package, not a stub) only when
+the phase that needs it actually lands, per the ownership rules below —
+not all at once.
 
 ## Ownership and Dependency Rules
 
