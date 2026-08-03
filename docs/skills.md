@@ -191,9 +191,20 @@ reach anyway if the provider call is actually needed.
 **What this does not solve:** a subprocess skill can still make its own
 arbitrary filesystem or network calls unrelated to the provider endpoint
 — true sandboxing (OS-level process restrictions) is not designed here.
-This is called out as an explicit open risk in the closing summary of
-this design pass; it should be solved before community skills are
-distributed for wide use, not before Milestone 1.
+This is an explicit open risk (§9), not a solved problem; it should be
+addressed before community skills are distributed for wide use, not
+before Milestone 1.
+
+**Milestone 1 implementation note:** the first skill (`review-diff`)
+runs in-process (§1's phasing note), so there is no subprocess boundary
+yet for a loopback endpoint to cross. `SkillRequest`/`SkillResponse`
+live in `src/buildrail/skill_protocol.py`; the Provider Gateway is
+passed to the skill's `run()` function as a direct second argument
+instead of via `provider_endpoint`, and `SkillOutput.content` holds the
+produced text directly rather than a `content_ref` file pointer, since
+nothing is written to disk until the Core Engine persists it as an
+artifact. Both are additive to replace, not breaking, once a real
+subprocess transport is built.
 
 ## 6. Execution Lifecycle
 

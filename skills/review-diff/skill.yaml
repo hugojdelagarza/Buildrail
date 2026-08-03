@@ -1,0 +1,19 @@
+name: review-diff
+version: 0.1.0
+protocol_version: "1.0"
+description: Reviews a unified diff and produces a structured review artifact.
+entrypoint: "python skill.py"
+
+inputs:
+  - name: diff
+    type: file
+    required: true
+    description: Path to a unified diff.
+
+outputs:
+  - name: review
+    artifact_type: review
+
+requires_provider: true
+provider_capabilities_required:
+  - text-completion

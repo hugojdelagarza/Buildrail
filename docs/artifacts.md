@@ -155,6 +155,16 @@ Field notes:
 - `related_artifacts` — any relationship that isn't provenance or
   supersession (§6).
 
+**Implementation note:** the first Artifact Store implementation
+(`src/buildrail/artifacts`) writes `id`, `schema_version`, `type`,
+`produced_by`, `run_id`, `step_index`, `created_at`, `content_ref`,
+`content_type`, `checksum`, and `provider_usage`. `pipeline`, `inputs`,
+`supersedes`, `superseded_by`, and `related_artifacts` are omitted
+rather than written as `null` — there is no pipeline, no re-run, and no
+provenance tracking yet to populate them honestly. They're added when a
+concrete need exists (pipelines, re-running the same skill, cross-run
+references).
+
 ## 5. Versioning
 
 Two independent versioning concepts, kept separate because they change

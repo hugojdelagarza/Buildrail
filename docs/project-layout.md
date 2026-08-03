@@ -16,7 +16,8 @@ buildrail/
 │       ├── providers/
 │       │   ├── gateway/      # Provider Gateway: interface, retry policy, usage accounting
 │       │   └── adapters/     # one module per concrete provider
-│       └── config/          # config loading and validation
+│       ├── config/          # config loading and validation
+│       └── skill_protocol.py  # SkillRequest/SkillResponse: the shared skill wire contract
 ├── skills/              # built-in, first-party skills
 ├── plugins/             # optional cloud/integration plugins (Phase 8)
 ├── docs/                # design and specification documents
@@ -72,7 +73,7 @@ out where it's easy to get wrong by accident.
   a skill's execution lifecycle (`docs/skills.md` §6).
 - **Allowed deps:** `src/buildrail/artifacts` (to persist output),
   `src/buildrail/providers/gateway` (interface only),
-  `src/buildrail/config`.
+  `src/buildrail/config`, `src/buildrail/skill_protocol`.
 - **Forbidden:** importing anything from `src/buildrail/cli`,
   `src/buildrail/providers/adapters` (must go through the gateway), or
   any specific skill's internals. The Core Engine knows skills only
@@ -117,17 +118,30 @@ out where it's easy to get wrong by accident.
   come from the environment only (`docs/engineering-principles.md`,
   security by default).
 
+### `src/buildrail/skill_protocol.py`
+- **Owns:** `SkillRequest`, `SkillResponse`, `RunContext` — the wire
+  contract shared between the Core Engine and every skill
+  (`docs/skills.md` §5). Plain dataclasses, no logic.
+- **Allowed deps:** `src/buildrail/providers` (a `SkillOutput` carries
+  `model_used`/`usage` for artifact metadata), standard library.
+- **Forbidden:** depending on `src/buildrail/core`, `src/buildrail/cli`,
+  or `src/buildrail/artifacts` — this module must stay importable by a
+  skill without pulling in orchestration logic.
+
 ### `skills/*`
 - **Owns:** the actual skill implementations, one directory each
   (`docs/skills.md` §2).
 - **Allowed deps:** whatever a skill's own language/runtime needs,
-  entirely isolated per skill; communicates with Buildrail only through
-  the `SkillRequest`/`SkillResponse` protocol.
-- **Forbidden:** importing Buildrail's `src/` modules directly, even for
-  built-in, first-party, Python-implemented skills. Built-in skills stay
+  entirely isolated per skill; `src/buildrail/providers`' public Gateway
+  and request/response types (this **is** "communicating through the
+  Provider Gateway contract," not an exception to it) and
+  `src/buildrail/skill_protocol`.
+- **Forbidden:** importing `src/buildrail/core` (orchestration
+  internals: `CoreEngine`, the Skill Registry, the Pipeline Runner) or
+  any `src/buildrail/providers/adapters/*` module. Built-in skills stay
   honest examples of what a community skill can actually do — if a
-  built-in skill reached into `src/core` internals, the protocol
-  boundary in `docs/skills.md` would be fiction.
+  built-in skill reached into Core Engine internals or a concrete
+  adapter, the protocol boundary in `docs/skills.md` would be fiction.
 
 ### `plugins/*` (Phase 8, not yet created)
 - **Owns:** optional integrations that reach outside the local machine

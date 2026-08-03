@@ -20,6 +20,11 @@ def _build_parser() -> argparse.ArgumentParser:
     provider_subparsers = provider_parser.add_subparsers(dest="provider_command", required=True)
     provider_subparsers.add_parser("check", help="Confirm the configured provider responds.")
 
+    review_parser = subparsers.add_parser(
+        "review", help="Review a diff with the review-diff skill."
+    )
+    review_parser.add_argument("--diff", required=True, type=Path, help="Path to a unified diff.")
+
     return parser
 
 
@@ -33,6 +38,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = engine.validate_config(Path.cwd())
     elif args.command == "provider":
         result = engine.check_provider(Path.cwd())
+    elif args.command == "review":
+        result = engine.review(Path.cwd(), args.diff)
     else:
         result = engine.run()
 

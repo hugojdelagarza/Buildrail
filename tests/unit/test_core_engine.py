@@ -53,3 +53,45 @@ def test_check_provider_returns_failure_result_when_config_missing(tmp_path: Pat
 
     assert result.success is False
     assert "No configuration file found" in result.message
+
+
+def test_review_returns_failure_when_diff_file_missing(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.review(tmp_path, tmp_path / "missing.patch")
+
+    assert result.success is False
+    assert "No diff file found" in result.message
+
+
+def test_review_returns_failure_when_config_missing(tmp_path: Path) -> None:
+    diff_path = tmp_path / "changes.patch"
+    diff_path.write_text("--- a/x.py\n+++ b/x.py\n+new line\n", encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.review(tmp_path, diff_path)
+
+    assert result.success is False
+    assert "No configuration file found" in result.message
+
+
+def test_review_writes_artifact_and_succeeds_with_fake_provider(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    diff_path = tmp_path / "changes.patch"
+    diff_path.write_text("--- a/x.py\n+++ b/x.py\n+new line\n", encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.review(tmp_path, diff_path)
+
+    assert result.success is True
+    assert "fake" in result.message.lower()
+
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    assert len(run_dirs) == 1
+    review_files = list(run_dirs[0].glob("001-review-*.md"))
+    assert len(review_files) == 1
+    meta_files = list(run_dirs[0].glob("001-review-*.meta.json"))
+    assert len(meta_files) == 1
+    assert (run_dirs[0] / "run.json").is_file()
