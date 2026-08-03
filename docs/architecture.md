@@ -131,6 +131,9 @@ internals or a specific provider's SDK.
 - Project-local configuration (which provider is active, pipeline
   definitions, skill parameters) lives in a plain file at the project
   root, checked into version control like any other project setting.
+- Concretely, that file is `buildrail.toml`, parsed with the standard
+  library's `tomllib` (Python 3.11+) — no third-party dependency, and
+  consistent with `pyproject.toml`'s format already in this repo.
 - Secrets (API keys) are never stored in that file — they come from
   the environment. Buildrail must run with zero configured secrets for
   any pipeline that uses no AI-dependent skill.

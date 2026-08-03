@@ -105,6 +105,15 @@ support the required capability kind.
   reintroduce a provider-specific dependency the rest of this design
   exists to prevent.
 
+**Implementation note:** the first implementation (`src/buildrail/providers`)
+covers `messages` and `capability_tier` on `ProviderRequest`, and `content`,
+`model_used`, `finish_reason`, `usage`, and `cost_estimate` on
+`ProviderResponse`. `stream`, `structured_output_schema`,
+`structured_output`, `max_output_tokens`, and `temperature` have no
+consumer yet — no skill needs them and no adapter maps them to anything —
+so they're added when one does. This is additive, not breaking, per
+`docs/engineering-principles.md` §14.
+
 ## 5. Streaming
 
 The interface declares streaming as a capability (`stream: true` on the

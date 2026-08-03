@@ -48,6 +48,8 @@ when one changes or a milestone completes; it's a snapshot, not a log:
   - Python project scaffolding.
   - Core Engine skeleton.
   - CLI delegation to `CoreEngine`.
+  - Project configuration loading and validation (`buildrail config
+    validate`, `src/buildrail/config`, `buildrail.toml`).
 - Do not implement cloud infrastructure, a web UI, pipelines, multiple
   providers, or community skill distribution before their roadmap phase.
 

@@ -34,16 +34,23 @@ and adding it now would be exactly the kind of directory that exists
 "because we might want it" rather than because something needs it —
 add it when a phase actually produces example projects worth shipping.
 
-**Current state (Milestone 1, Core Engine skeleton):**
-`src/buildrail/cli.py` is a single flat module (no `cli/` package yet —
-there's only one command, so there's nothing to subdivide).
-`src/buildrail/core/` exists with one module, `engine.py`, holding
-`CoreEngine` and `Result`; it has no Pipeline Runner, Skill Registry, or
-Run State yet — those land when a real skill exists to run.
-`artifacts/`, `providers/`, and `config/` are not created yet. Each
-subdivision above is created (as a real package, not a stub) only when
-the phase that needs it actually lands, per the ownership rules below —
-not all at once.
+**Current state (Milestone 1, in progress):**
+`src/buildrail/cli.py` is a single flat module with real `argparse`
+subcommand parsing (`buildrail`, `buildrail config validate`) — not yet
+a `cli/` package, since there's still only a handful of commands to
+dispatch, not enough to warrant subdividing.
+`src/buildrail/core/` holds `engine.py` (`CoreEngine`, `Result`); it has
+no Pipeline Runner or Skill Registry yet — those land when a real skill
+exists to run.
+`src/buildrail/config/` holds `loader.py`: `load_config()`, the
+`BuildrailConfig` dataclass, and the `ConfigError` exception hierarchy —
+loads and validates `buildrail.toml` (`docs/architecture.md` §3.5)
+against exactly what Milestone 1 needs (`provider`, `artifact_root`),
+stdlib-only, no secrets.
+`artifacts/` and `providers/` are not created yet. Each subdivision
+above is created (as a real package, not a stub) only when the phase
+that needs it actually lands, per the ownership rules below — not all
+at once.
 
 ## Ownership and Dependency Rules
 

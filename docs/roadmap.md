@@ -27,9 +27,9 @@ one CLI command, running one real skill, through the Core Engine, with
 one AI provider adapter wired through the Provider Gateway, writing one
 artifact.
 
-- Repository scaffolding (project structure, tooling, CLI stub) is
-  complete. The skill, Provider Gateway, and adapter have not been
-  implemented yet.
+- Repository scaffolding, the Core Engine skeleton, and configuration
+  loading/validation (`buildrail config validate`) are complete. The
+  skill, Provider Gateway, and adapter have not been implemented yet.
 - Detailed in `docs/milestone-1.md`.
 
 ## Phase 2 — Skill Registry — **Not started**
