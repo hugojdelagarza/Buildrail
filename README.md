@@ -75,3 +75,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow,
 coding standards, and commit/PR expectations. Read `docs/architecture.md`
 and `CLAUDE.md` first — implementation work follows milestone docs, not
 ad hoc additions.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
