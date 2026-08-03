@@ -28,12 +28,13 @@ decision that isn't obviously covered by an existing doc. In short:
    and the current milestone doc (`docs/milestone-1.md` right now) are
    the source of truth for what's in scope. Implementation work follows
    an approved milestone doc — it doesn't get ahead of one.
-2. **Set up the environment:**
+2. **Set up the environment** (Windows CMD; macOS/Linux equivalent noted):
    ```
    python -m venv .venv
-   .venv/Scripts/activate      # .venv/bin/activate on macOS/Linux
+   .venv\Scripts\activate.bat
    pip install -e ".[dev]"
    ```
+   macOS/Linux: `source .venv/bin/activate` instead of the `.bat` line.
 3. **Know where code goes.** `docs/project-layout.md` defines what each
    directory owns and, critically, what it's *forbidden* to depend on
    (e.g. only a provider adapter may import a vendor SDK). Check it
@@ -92,8 +93,9 @@ Full policy in `docs/git-workflow.md`. The core rule, stated there
 explicitly: **commits are save points, tags represent releases.**
 Commit at every clean, working boundary — don't hoard changes into one
 large commit, and don't commit broken or half-finished state. Messages
-are imperative mood and describe what changed (see `docs/git-workflow.md`
-§5 for examples).
+follow **Conventional Commits** (`type(scope): description`) — see
+`docs/git-workflow.md` §5 for the full type list, scope rules, and
+examples.
 
 ## Pull Request Expectations
 

@@ -20,17 +20,36 @@ conventions, and `CONTRIBUTING.md` covers the day-to-day dev workflow.
 
 ## Project Status
 
-**Milestone 1 (in progress).** Repository scaffolding is complete and
-committed: project structure, `pyproject.toml`, Ruff/mypy/pytest config.
-The Core Engine skeleton exists (`src/buildrail/core`: a `CoreEngine`
-class returning a placeholder `Result`), and the CLI (`src/buildrail/cli.py`)
-delegates to it rather than hardcoding output. Milestone 1's actual
-business logic — the review skill, the Provider Gateway, the Anthropic
-adapter, artifact writing — has **not** been implemented yet. Do not
-implement it, add dependencies beyond what a given approved step
-requires, or scaffold further ahead of the current step without the
-user's approval. See `docs/milestone-1.md` for exact scope and
-acceptance criteria, and `docs/roadmap.md` for phase-by-phase status.
+**Milestone 1 (in progress).** See "Current Project Context" below for
+what's done so far. Do not implement Milestone 1's remaining business
+logic (review skill, Provider Gateway, Anthropic adapter, artifact
+writing), add dependencies beyond what an approved step requires, or
+scaffold ahead of the current step without the user's approval. Full
+scope and acceptance criteria: `docs/milestone-1.md`. Phase-by-phase
+status: `docs/roadmap.md`.
+
+## Current Project Context
+
+Durable decisions that should carry between sessions — update this list
+when one changes or a milestone completes; it's a snapshot, not a log:
+
+- Buildrail is local-first.
+- Buildrail is open source.
+- Python 3.12 is the current implementation language.
+- The CLI delegates to the Core Engine.
+- Providers are interchangeable.
+- Skills are reusable and provider-neutral.
+- Generated outputs are typed artifacts.
+- Tests run offline by default.
+- Buildrail is implemented one complete vertical slice at a time.
+- Current phase: Milestone 1 implementation.
+- Current completed foundation:
+  - Architecture and engineering specification.
+  - Python project scaffolding.
+  - Core Engine skeleton.
+  - CLI delegation to `CoreEngine`.
+- Do not implement cloud infrastructure, a web UI, pipelines, multiple
+  providers, or community skill distribution before their roadmap phase.
 
 ## Core Design Rules
 
@@ -70,38 +89,53 @@ These constraints are non-negotiable and should shape every future change:
 
 ## Commit Boundaries
 
-Recommending commits is a proactive, default part of working in this
-repository — the user shouldn't have to ask. Full policy (cadence,
-message style, branching, tags, releases) lives in
-`docs/git-workflow.md`; this section is the operational rule for any AI
-agent acting in this repo.
+Recommending commits is proactive — the user shouldn't have to ask. Full
+policy (cadence, branching, tags, releases) lives in
+`docs/git-workflow.md`; commit messages follow **Conventional Commits**,
+`type(scope): concise imperative description` — full type list, scope
+rules, and examples in `docs/git-workflow.md` §5. This section is the
+operational rule for any AI agent acting in this repo.
 
-- **Recognize natural commit boundaries.** A boundary is reached whenever
-  a self-contained, working slice is done: a scaffolding step, a doc
-  revision pass, a passing test suite after a change, a bug fix —
-  anything that leaves the repository clean and demonstrable, per the
-  "one complete vertical slice at a time" principle
-  (`docs/engineering-principles.md` §3).
-- **Recommend commits automatically, without being asked.** When a
-  boundary is reached, say so plainly: **"This is a good place to
-  commit."** Don't wait to be prompted.
-- **Never execute git commands that change repository or remote state.**
-  No `git add`, `commit`, `push`, `reset`, `checkout`, branch deletion,
-  or tagging — ever, regardless of how routine it seems. Read-only
-  commands (`git status`, `git diff`, `git log`, `git ls-files`) are
-  fine to run freely to inform a recommendation.
-- **Inspect for secrets before recommending a commit.** Check
-  changed/staged/untracked files against `docs/git-workflow.md`'s
-  security checklist (secrets, keys, tokens, credentials, absolute local
-  paths, machine-specific config, virtual environments, generated
-  artifacts). If anything looks unsafe, stop and explain why instead of
-  recommending the commit.
-- **At every commit boundary, provide:**
-  1. A recommended commit message (imperative mood).
-  2. A summary of `git status` — what changed, what's untracked.
-  3. The exact `git add` / `git commit` commands to run. Only include a
-     `git push` recommendation when a push is actually appropriate
-     (see `docs/git-workflow.md`) — never suggest it reflexively.
-- **Stop after each clean implementation milestone.** Land one coherent
-  slice, recommend the commit, and wait for approval before starting the
-  next one — don't chain unrelated changes into a single unreviewed pass.
+- **Recognize the boundary and say so.** When a self-contained, working
+  slice is done (per `docs/engineering-principles.md` §3), say plainly:
+  **"This is a good place to commit."** Don't wait to be asked.
+- **Never run a repository-changing Git command without explicit
+  approval.** No `add`, `commit`, `push`, `reset`, `checkout`, `clean`,
+  branch deletion, or tagging. Read-only commands (`status`, `diff`,
+  `log`, `ls-files`) are always fine to run to inform a recommendation.
+- **Before recommending, always run/inspect:** `git status`, `git diff
+  --check`, `git diff`, `git diff --cached` (if anything is staged), and
+  the changed/untracked files for secrets, credentials, API keys, local
+  paths, or other unsafe content (`docs/git-workflow.md` §8). If
+  anything looks unsafe, stop and explain why instead of recommending
+  the commit.
+- **This project is developed from Windows Command Prompt.** Every
+  command given must work in CMD — no `$(...)`, heredocs, or `export`.
+  Use multiple `-m` flags for a multi-line commit message, and `set` for
+  environment variables (`docs/git-workflow.md` §5).
+- **At the boundary, respond using the Completion Summary Format
+  below.**
+- **Stop after each clean slice.** Land one coherent change, recommend
+  the commit, and wait for approval before starting the next one.
+
+## Completion Summary Format
+
+Keep completion summaries concise by default:
+
+```
+Summary
+- 2-5 bullets on the meaningful changes
+
+Verification
+- format / lint / mypy / tests / relevant runtime check
+
+Git
+- safety status
+- recommended commit message
+- exact commands
+```
+
+Don't repeat every file's purpose when it's obvious from the diff,
+restate the whole architecture, or add celebratory commentary. Expand
+beyond this structure only when a decision is risky, surprising, or
+architectural — a tradeoff worth flagging, not a status update.

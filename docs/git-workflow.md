@@ -106,31 +106,63 @@ At that point, use short-lived feature branches merged via pull request:
 
 ## 5. Commit Message Style
 
-Imperative mood, matching the two commits already on `main`
-("Complete Buildrail architecture and engineering specification", "Add
-initial Python project scaffolding"):
-
-- First line: imperative, concise (aim for under ~72 characters),
-  states *what* changed.
-- Body (when the *why* isn't obvious from the diff or the first line):
-  a sentence or two on the reasoning — a past incident, a doc this
-  responds to, a tradeoff. Skip the body when the first line already
-  says everything worth saying.
-- Reference the relevant doc or milestone when it adds real context
-  (e.g. "per docs/milestone-1.md acceptance criterion 4"), not as
-  ritual on every commit.
+Buildrail uses [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-Add initial Python project scaffolding
+type(scope): concise imperative description
+```
 
-Add review skill: parse unified diff and call Provider Gateway
+- **Type** (lowercase, required):
+  - `feat` — a new user-visible or architectural capability. Don't use
+    `feat` for ordinary internal work that isn't a real capability.
+  - `fix` — a defect correction.
+  - `docs` — documentation-only changes.
+  - `test` — test-only changes.
+  - `refactor` — behavior-preserving code restructuring.
+  - `build` — packaging or build-system changes.
+  - `ci` — automation/workflow changes.
+  - `chore` — maintenance that doesn't fit another type.
+- **Scope** (optional, lowercase): the area touched — `core`, `cli`,
+  `config`, `provider`, `skills`, `artifacts`. Use one when it adds
+  useful context; don't force one for broad documentation or
+  repository-level changes (`docs: add MIT license`, not
+  `docs(root): add MIT license`).
+- **Subject**: imperative mood ("add", not "added" or "adds"), concise
+  — aim under 72 characters, no trailing period.
+- **Body** (optional): a sentence or two on the *why*, when it isn't
+  obvious from the subject or diff — a past incident, a doc this
+  responds to, a tradeoff.
 
-Fix artifact id collision when two runs start in the same second
+```
+feat(core): implement Core Engine skeleton
+feat(config): add project configuration loader
+feat(provider): introduce Provider Gateway
+fix(cli): handle invalid input
+test(core): add engine failure tests
+refactor(cli): simplify command dispatch
+docs: add MIT license
+build: configure Hatchling
+ci: add verification workflow
+chore: update development dependencies
 ```
 
 Avoid: past tense ("Added...", "Fixed..."), vague summaries ("Update
-files", "Fix stuff"), and commits that describe the session instead of
-the change ("More work on milestone 1").
+files", "Fix stuff"), commits that describe the session instead of the
+change ("More work on milestone 1"), and labeling ordinary internal work
+as `feat` just because it's new code.
+
+**On Windows CMD**, a single-line message is one `-m`:
+
+```
+git commit -m "feat(core): implement Core Engine skeleton"
+```
+
+For a body, use additional `-m` flags rather than a heredoc (heredocs
+and `$(...)` are Bash-only and don't work in CMD):
+
+```
+git commit -m "fix(cli): handle invalid input" -m "Empty diffs previously crashed with a traceback instead of a clear error."
+```
 
 ## 6. Semantic Version Tags
 
