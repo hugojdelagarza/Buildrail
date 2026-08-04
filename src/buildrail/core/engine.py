@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from buildrail.artifacts import ArtifactStore
+from buildrail.artifacts import ArtifactReader, ArtifactReadError, ArtifactStore
 from buildrail.config import BuildrailConfig, ConfigError, load_config
 from buildrail.hooks import HookError
 from buildrail.hooks import install as install_hook_file
@@ -19,6 +19,8 @@ from buildrail.providers import (
     create_provider,
 )
 from buildrail.skills import SkillError, SkillRegistry
+
+_MAX_PAYLOAD_DISPLAY_CHARS = 4000
 
 
 @dataclass(frozen=True)
@@ -325,3 +327,91 @@ class CoreEngine:
         if result.state == "installed":
             return Result(success=True, message=f"Installed at {result.hook_path}.")
         return Result(success=True, message=f"Not installed. Hook path: {result.hook_path}.")
+
+    def list_runs(self, project_root: Path, *, limit: int = 20) -> Result:
+        """List recent runs from the configured artifact_root, newest first."""
+        try:
+            config = load_config(project_root)
+            reader = ArtifactReader(project_root / config.artifact_root)
+            runs = reader.list_runs(limit)
+        except (ConfigError, ArtifactReadError) as exc:
+            return Result(success=False, message=str(exc))
+
+        if not runs:
+            return Result(success=True, message="No runs found.")
+
+        lines = []
+        for run in runs:
+            created = run.created_at or "unknown"
+            types = ", ".join(run.artifact_types) or "none"
+            lines.append(
+                f"{run.run_id}  status={run.status}  created={created}  "
+                f"artifacts={run.artifact_count}  types={types}"
+            )
+        return Result(success=True, message="\n".join(lines))
+
+    def inspect_run(self, project_root: Path, run_id: str) -> Result:
+        """Show one run's status and each of its artifacts' metadata."""
+        try:
+            config = load_config(project_root)
+            reader = ArtifactReader(project_root / config.artifact_root)
+            run = reader.get_run(run_id)
+        except (ConfigError, ArtifactReadError) as exc:
+            return Result(success=False, message=str(exc))
+
+        lines = [
+            f"run_id: {run.run_id}",
+            f"status: {run.status}",
+            f"created_at: {run.created_at or 'unknown'}",
+            f"artifact_count: {len(run.artifacts)}",
+        ]
+        for artifact in run.artifacts:
+            produced_by = artifact.produced_by_skill or "unknown"
+            if artifact.produced_by_version:
+                produced_by += f" ({artifact.produced_by_version})"
+            lines.append("")
+            lines.append(f"- id: {artifact.id}")
+            lines.append(f"  type: {artifact.type}")
+            lines.append(f"  content_path: {artifact.content_path}")
+            lines.append(f"  status: {artifact.status}")
+            lines.append(f"  produced_by: {produced_by}")
+            lines.append(f"  provider_usage: {artifact.provider_usage or 'none'}")
+        return Result(success=True, message="\n".join(lines))
+
+    def inspect_artifact(self, project_root: Path, artifact_id: str) -> Result:
+        """Show one artifact's metadata and checksum-verified payload content."""
+        try:
+            config = load_config(project_root)
+            reader = ArtifactReader(project_root / config.artifact_root)
+            payload = reader.get_artifact(artifact_id)
+        except (ConfigError, ArtifactReadError) as exc:
+            return Result(success=False, message=str(exc))
+
+        detail = payload.detail
+        produced_by = detail.produced_by_skill or "unknown"
+        if detail.produced_by_version:
+            produced_by += f" ({detail.produced_by_version})"
+
+        content = payload.content
+        truncated = len(content) > _MAX_PAYLOAD_DISPLAY_CHARS
+        displayed = content[:_MAX_PAYLOAD_DISPLAY_CHARS]
+
+        lines = [
+            f"id: {detail.id}",
+            f"type: {detail.type}",
+            f"content_type: {detail.content_type or 'unknown'}",
+            f"produced_by: {produced_by}",
+            f"run_id: {detail.run_id}",
+            f"created_at: {detail.created_at or 'unknown'}",
+            f"checksum: {detail.checksum or 'unknown'}",
+            f"provider_usage: {detail.provider_usage or 'none'}",
+            "",
+            "--- payload ---",
+            displayed,
+        ]
+        if truncated:
+            lines.append(
+                f"... [truncated, showing {_MAX_PAYLOAD_DISPLAY_CHARS} of "
+                f"{len(content)} characters]"
+            )
+        return Result(success=True, message="\n".join(lines))

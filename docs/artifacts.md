@@ -225,18 +225,27 @@ UI is a consumer of the same core, not a parallel implementation. For
 artifacts specifically, that means the Core Engine exposes a narrow
 **read** interface now, even though only the CLI calls it today:
 
-- `list_runs()`
-- `list_artifacts(run_id)`
-- `get_artifact(artifact_id)` → metadata + payload
+- `list_runs(limit)` → newest-first run summaries, built from each
+  run's `run.json` alone (never artifact payloads)
+- `get_run(run_id)` → one run's status, created time, and every
+  artifact's metadata (supersedes this section's original
+  `list_artifacts(run_id)` sketch — one run's full detail is a superset
+  of just its artifact list)
+- `get_artifact(artifact_id)` → metadata + checksum-verified payload
 - `get_relationships(artifact_id)` → provenance/supersession/related
+  (not yet implemented)
 
 This is not speculative abstraction: CLAUDE.md already commits to a
 future UI/API existing, and defining this boundary now means the CLI
-itself is implemented *against* this interface rather than reading
-`artifacts/` off disk directly — so the day a UI or API shows up, it
-reuses the same four functions instead of reverse-engineering the file
-layout. The CLI remains the only *caller* until a second consumer is
-real; the interface is just not CLI-shaped.
+itself is implemented *against* this interface (`ArtifactReader`,
+`src/buildrail/artifacts/reader.py`) rather than reading `artifacts/`
+off disk directly — so the day a UI or API shows up, it reuses the same
+functions instead of reverse-engineering the file layout. The CLI
+remains the only *caller* until a second consumer is real; the
+interface is just not CLI-shaped. Run and artifact ids are treated as
+untrusted input: they're validated against a strict charset and the
+resolved path is confirmed to stay under `artifact_root` before
+anything is read.
 
 ## 9. Note on the `reports/` → `artifacts/` Rename
 

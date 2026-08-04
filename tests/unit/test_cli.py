@@ -365,3 +365,84 @@ def test_hooks_uninstall_after_install_succeeds(
     assert exit_code == 0
     assert captured.err == ""
     assert "Removed" in captured.out
+
+
+def test_runs_list_reports_no_runs(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["runs", "list"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "No runs found" in captured.out
+
+
+def test_runs_list_rejects_invalid_limit(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["runs", "list", "--limit", "0"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "limit" in captured.out.lower()
+
+
+def test_runs_inspect_and_artifacts_inspect_after_a_real_review(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    diff_path = tmp_path / "changes.patch"
+    diff_path.write_text("--- a/x.py\n+++ b/x.py\n+new line\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    main(["review", "--diff", str(diff_path)])
+    run_id = next((tmp_path / "artifacts").iterdir()).name
+
+    exit_code = main(["runs", "inspect", run_id])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert f"run_id: {run_id}" in captured.out
+
+    exit_code = main(["artifacts", "inspect", f"{run_id}/001-review-review"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "--- payload ---" in captured.out
+
+
+def test_runs_inspect_fails_without_traceback_for_unknown_run(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["runs", "inspect", "20260101-000000-000000"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "No run named" in captured.out
+
+
+def test_artifacts_inspect_rejects_path_traversal(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["artifacts", "inspect", "../secret/x"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "Invalid" in captured.out

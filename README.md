@@ -121,6 +121,23 @@ buildrail skill list
 buildrail skill inspect review-diff
 ```
 
+### Browsing Runs and Artifacts
+
+Every command above writes its output under `artifact_root` as a typed
+artifact. These commands browse that local history read-only — nothing
+is mutated, moved, or deleted:
+
+```
+buildrail runs list
+buildrail runs inspect <run-id>
+buildrail artifacts inspect <artifact-id>
+```
+
+`runs list` shows the most recent runs (newest first, 20 by default;
+use `--limit <n>` to change that). `runs inspect` shows one run's
+artifacts; `artifacts inspect` shows one artifact's full metadata and
+payload, checksum-verified before it's displayed.
+
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) — system design and module boundaries.

@@ -427,3 +427,135 @@ def test_hook_status_reports_malformed_block_as_failure(tmp_path: Path) -> None:
 
     assert result.success is False
     assert "Duplicate" in result.message
+
+
+def _create_review_artifact(tmp_path: Path) -> str:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    diff_path = tmp_path / "changes.patch"
+    diff_path.write_text("--- a/x.py\n+++ b/x.py\n+new line\n", encoding="utf-8")
+    engine = CoreEngine()
+    result = engine.review(tmp_path, diff_path)
+    assert result.success is True
+    run_dir = next((tmp_path / "artifacts").iterdir())
+    return run_dir.name
+
+
+def test_list_runs_reports_no_runs_found(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.list_runs(tmp_path)
+
+    assert result.success is True
+    assert "No runs found" in result.message
+
+
+def test_list_runs_shows_a_created_run(tmp_path: Path) -> None:
+    run_id = _create_review_artifact(tmp_path)
+    engine = CoreEngine()
+
+    result = engine.list_runs(tmp_path)
+
+    assert result.success is True
+    assert run_id in result.message
+    assert "status=success" in result.message
+    assert "types=review" in result.message
+
+
+def test_list_runs_rejects_invalid_limit(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.list_runs(tmp_path, limit=0)
+
+    assert result.success is False
+    assert "limit" in result.message.lower()
+
+
+def test_inspect_run_returns_details(tmp_path: Path) -> None:
+    run_id = _create_review_artifact(tmp_path)
+    engine = CoreEngine()
+
+    result = engine.inspect_run(tmp_path, run_id)
+
+    assert result.success is True
+    assert f"run_id: {run_id}" in result.message
+    assert "type: review" in result.message
+    assert "produced_by: review-diff (0.1.0)" in result.message
+
+
+def test_inspect_run_fails_for_unknown_run(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.inspect_run(tmp_path, "20260101-000000-000000")
+
+    assert result.success is False
+    assert "No run named" in result.message
+
+
+def test_inspect_artifact_returns_metadata_and_payload(tmp_path: Path) -> None:
+    run_id = _create_review_artifact(tmp_path)
+    artifact_id = f"{run_id}/001-review-review"
+    engine = CoreEngine()
+
+    result = engine.inspect_artifact(tmp_path, artifact_id)
+
+    assert result.success is True
+    assert f"id: {artifact_id}" in result.message
+    assert "checksum: sha256:" in result.message
+    assert "--- payload ---" in result.message
+    assert "Diff Review" in result.message
+
+
+def test_inspect_artifact_truncates_large_payloads(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("buildrail.core.engine._MAX_PAYLOAD_DISPLAY_CHARS", 10)
+    run_id = _create_review_artifact(tmp_path)
+    artifact_id = f"{run_id}/001-review-review"
+    engine = CoreEngine()
+
+    result = engine.inspect_artifact(tmp_path, artifact_id)
+
+    assert result.success is True
+    assert "truncated" in result.message
+
+
+def test_inspect_artifact_fails_for_unknown_artifact(tmp_path: Path) -> None:
+    run_id = _create_review_artifact(tmp_path)
+    engine = CoreEngine()
+
+    result = engine.inspect_artifact(tmp_path, f"{run_id}/999-nope-nope")
+
+    assert result.success is False
+    assert "No artifact named" in result.message
+
+
+def test_inspect_artifact_rejects_path_traversal(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.inspect_artifact(tmp_path, "../secret/x")
+
+    assert result.success is False
+    assert "Invalid" in result.message
+
+
+def test_list_runs_uses_custom_artifact_root(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "custom-out"\n', encoding="utf-8"
+    )
+    diff_path = tmp_path / "changes.patch"
+    diff_path.write_text("--- a/x.py\n+++ b/x.py\n+new line\n", encoding="utf-8")
+    engine = CoreEngine()
+    engine.review(tmp_path, diff_path)
+
+    result = engine.list_runs(tmp_path)
+
+    assert result.success is True
+    assert "status=success" in result.message
+    assert (tmp_path / "custom-out").is_dir()
+    assert not (tmp_path / "artifacts").exists()

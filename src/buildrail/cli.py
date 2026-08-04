@@ -53,6 +53,22 @@ def _build_parser() -> argparse.ArgumentParser:
     hooks_subparsers.add_parser("uninstall", help="Remove the Buildrail-managed hook block.")
     hooks_subparsers.add_parser("status", help="Show whether the hook is installed.")
 
+    runs_parser = subparsers.add_parser("runs", help="Browse local run history.")
+    runs_subparsers = runs_parser.add_subparsers(dest="runs_command", required=True)
+    runs_list_parser = runs_subparsers.add_parser("list", help="List recent runs.")
+    runs_list_parser.add_argument(
+        "--limit", type=int, default=20, help="Maximum number of runs to show (default 20)."
+    )
+    runs_inspect_parser = runs_subparsers.add_parser("inspect", help="Show one run's details.")
+    runs_inspect_parser.add_argument("run_id", help="The run's id.")
+
+    artifacts_parser = subparsers.add_parser("artifacts", help="Browse local artifacts.")
+    artifacts_subparsers = artifacts_parser.add_subparsers(dest="artifacts_command", required=True)
+    artifacts_inspect_parser = artifacts_subparsers.add_parser(
+        "inspect", help="Show one artifact's metadata and payload."
+    )
+    artifacts_inspect_parser.add_argument("artifact_id", help="The artifact's id.")
+
     return parser
 
 
@@ -86,6 +102,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = engine.uninstall_hook(Path.cwd())
         else:
             result = engine.hook_status(Path.cwd())
+    elif args.command == "runs":
+        if args.runs_command == "list":
+            result = engine.list_runs(Path.cwd(), limit=args.limit)
+        else:
+            result = engine.inspect_run(Path.cwd(), args.run_id)
+    elif args.command == "artifacts":
+        result = engine.inspect_artifact(Path.cwd(), args.artifact_id)
     else:
         result = engine.run()
 
