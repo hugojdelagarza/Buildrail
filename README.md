@@ -9,12 +9,12 @@ of truth. Pipelines, skills, and workflows run locally by default; AI
 providers and cloud services are optional, swappable backends rather than
 hard requirements.
 
-> **Status:** Milestone 1 in progress. Repository scaffolding and the
-> Core Engine skeleton (CLI → CoreEngine → Result → CLI output) are
-> complete; Milestone 1's business logic (the review skill, Provider
-> Gateway, Anthropic adapter) has not been implemented yet. See
-> [docs/roadmap.md](docs/roadmap.md) for what's planned and
-> [docs/milestone-1.md](docs/milestone-1.md) for the current unit of work.
+> **Status:** Phases 0–3 are complete: CLI, Core Engine, configuration,
+> Provider Gateway (Fake + Anthropic adapters), a manifest-driven Skill
+> Registry (four built-in skills), the Artifact Store/Reader, Git hook
+> management, and the first named pipeline (`buildrail run pre-commit`)
+> are all implemented. See [docs/roadmap.md](docs/roadmap.md) for phase
+> status and what's next.
 
 ## Why Buildrail
 
@@ -173,12 +173,12 @@ payload, checksum-verified before it's displayed.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to develop, test, and submit changes.
 - [CLAUDE.md](CLAUDE.md) — working agreements for AI agents contributing here.
 
-## Project Layout (planned)
+## Project Layout
 
 ```
 buildrail/
-├── src/        # CLI + Core Engine skeleton implemented; Provider Gateway not yet built
-├── skills/     # reusable skill definitions (none yet — first one lands in Milestone 1)
+├── src/        # CLI, Core Engine, Provider Gateway, Skill Registry, Pipeline Runner, Artifact Store/Reader
+├── skills/     # reusable skill definitions (review-diff, test-summary, verify-project, release-notes)
 ├── plugins/    # optional cloud/integration plugins (later phase)
 ├── tests/      # test suite
 ├── artifacts/  # generated output (reviews, docs, test reports, etc.) — git-ignored

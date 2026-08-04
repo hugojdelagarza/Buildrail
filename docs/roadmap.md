@@ -20,16 +20,17 @@ redesign them.
   `docs/provider-interface.md`, `docs/testing.md`,
   `docs/project-layout.md`, `docs/engineering-principles.md`).
 
-## Phase 1 — Single Skill, End to End — **In progress (current)**
+## Phase 1 — Single Skill, End to End — **Complete**
 
 Prove the full vertical slice works with the smallest possible surface:
 one CLI command, running one real skill, through the Core Engine, with
 one AI provider adapter wired through the Provider Gateway, writing one
 artifact.
 
-- Repository scaffolding, the Core Engine skeleton, and configuration
-  loading/validation (`buildrail config validate`) are complete. The
-  skill, Provider Gateway, and adapter have not been implemented yet.
+- Repository scaffolding, the Core Engine, configuration
+  loading/validation (`buildrail config validate`), the `review-diff`
+  skill, the Provider Gateway, and the Fake and Anthropic adapters are
+  all implemented.
 - Detailed in `docs/milestone-1.md`.
 
 ## Phase 2 — Skill Registry — **Complete**
