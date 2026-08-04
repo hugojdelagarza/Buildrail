@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "Local-first orchestration for pipelines, reusable AI skills, code reviews, documentation generation, and developer workflows."
 readme = "README.md"
 requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.40,<1",
+]
 
 [project.scripts]
 buildrail = "buildrail.cli:main"
@@ -39,4 +42,4 @@ strict = true
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra --ignore=tests/live"

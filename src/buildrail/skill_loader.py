@@ -16,7 +16,7 @@ from buildrail.skill_protocol import SkillRequest, SkillResponse
 
 SkillRunner = Callable[[SkillRequest, ProviderGateway], SkillResponse]
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _SKILLS_DIR = _REPO_ROOT / "skills"
 
 

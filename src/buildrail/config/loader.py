@@ -7,7 +7,7 @@ from typing import Any
 
 CONFIG_FILENAME = "buildrail.toml"
 
-_SUPPORTED_PROVIDERS = frozenset({"fake"})
+_SUPPORTED_PROVIDERS = frozenset({"fake", "anthropic"})
 _REQUIRED_FIELDS = ("provider", "artifact_root")
 
 
@@ -33,6 +33,7 @@ class BuildrailConfig:
 
     provider: str
     artifact_root: str
+    anthropic_model: str | None = None
 
 
 def load_config(project_root: Path) -> BuildrailConfig:
@@ -71,4 +72,14 @@ def _validate(raw: dict[str, Any]) -> BuildrailConfig:
             f"{CONFIG_FILENAME}: 'artifact_root' must be a non-empty string."
         )
 
-    return BuildrailConfig(provider=provider, artifact_root=artifact_root)
+    anthropic_model = raw.get("anthropic_model")
+    if anthropic_model is not None and (
+        not isinstance(anthropic_model, str) or not anthropic_model
+    ):
+        raise ConfigValidationError(
+            f"{CONFIG_FILENAME}: 'anthropic_model' must be a non-empty string."
+        )
+
+    return BuildrailConfig(
+        provider=provider, artifact_root=artifact_root, anthropic_model=anthropic_model
+    )

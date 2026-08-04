@@ -37,6 +37,43 @@ plugged in — never baked in.
 - **One complete feature at a time** — vertical slices, not partial layers.
 - **Minimal abstraction** — concrete solutions over speculative flexibility.
 
+## Usage Example
+
+`buildrail review --diff <path>` reviews a unified diff using whichever
+provider `buildrail.toml` names.
+
+**Offline, no API key (default for development and tests):**
+
+```toml
+provider = "fake"
+artifact_root = "artifacts"
+```
+
+**Real reviews via Claude:**
+
+```toml
+provider = "anthropic"
+artifact_root = "artifacts"
+anthropic_model = "claude-haiku-4-5-20251001"  # optional; this is the default
+```
+
+Set your API key for the current terminal session (Windows CMD):
+
+```
+set ANTHROPIC_API_KEY=your_key_here
+```
+
+Then run:
+
+```
+buildrail review --diff path\to\changes.patch
+```
+
+**Never commit a real API key.** `ANTHROPIC_API_KEY` must only ever come
+from the environment — never write it into `buildrail.toml` or any
+other tracked file. `.env` is git-ignored for this reason;
+`.env.example` documents the variable name only.
+
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) — system design and module boundaries.

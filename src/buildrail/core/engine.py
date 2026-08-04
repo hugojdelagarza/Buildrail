@@ -5,7 +5,7 @@ from pathlib import Path
 
 from buildrail.artifacts import ArtifactStore
 from buildrail.config import ConfigError, load_config
-from buildrail.core.skill_loader import load_skill
+from buildrail.pipeline import PipelineContext, PipelineRunner
 from buildrail.providers import (
     Message,
     ProviderError,
@@ -14,7 +14,6 @@ from buildrail.providers import (
     TextPart,
     create_provider,
 )
-from buildrail.skill_protocol import RunContext, SkillRequest
 
 
 @dataclass(frozen=True)
@@ -44,7 +43,7 @@ class CoreEngine:
         """Resolve the configured provider through the gateway and confirm it responds."""
         try:
             config = load_config(project_root)
-            provider = create_provider(config.provider)
+            provider = create_provider(config.provider, model=config.anthropic_model)
             gateway = ProviderGateway(provider)
             request = ProviderRequest(
                 messages=(Message(role="user", content=(TextPart(text="ping"),)),)
@@ -58,13 +57,13 @@ class CoreEngine:
         )
 
     def review(self, project_root: Path, diff_path: Path) -> Result:
-        """Review a diff with the review-diff skill and write the result as an artifact."""
+        """Run the review pipeline on a diff and write its output as an artifact."""
         if not diff_path.is_file():
             return Result(success=False, message=f"No diff file found at {diff_path}.")
 
         try:
             config = load_config(project_root)
-            provider = create_provider(config.provider)
+            provider = create_provider(config.provider, model=config.anthropic_model)
         except (ConfigError, ProviderError) as exc:
             return Result(success=False, message=str(exc))
 
@@ -72,51 +71,30 @@ class CoreEngine:
         store = ArtifactStore(project_root / config.artifact_root)
         run_id = store.generate_run_id()
 
-        request = SkillRequest(
-            protocol_version="1.0",
-            run_context=RunContext(run_id=run_id, step_index=1, workdir=str(project_root)),
+        context = PipelineContext(
+            run_id=run_id,
+            workdir=str(project_root),
             inputs={"diff": str(diff_path.resolve())},
-            config={},
+            provider_name=config.provider,
         )
 
-        run_review = load_skill("review-diff")
-        try:
-            response = run_review(request, gateway)
-        except ProviderError as exc:
-            return Result(success=False, message=str(exc))
+        result = PipelineRunner(gateway, store).run(context)
+        if not result.success:
+            return Result(success=False, message=result.error or "The pipeline failed.")
 
-        if response.status == "failure":
-            return Result(success=False, message=response.error or "The review-diff skill failed.")
-
-        output = response.outputs.get("review")
-        if output is None:
+        step = result.steps[-1]
+        output = step.response.outputs.get("review")
+        if output is None or not step.artifacts:
             return Result(success=False, message="The review-diff skill did not produce a review.")
 
-        provider_usage: dict[str, object] | None = None
         usage_note = ""
         if output.usage is not None and output.model_used is not None:
-            provider_usage = {
-                "provider": config.provider,
-                "model": output.model_used,
-                "input_tokens": output.usage.input_tokens,
-                "output_tokens": output.usage.output_tokens,
-            }
             usage_note = (
                 f" Provider: {config.provider}/{output.model_used}, "
                 f"tokens: {output.usage.input_tokens} in / {output.usage.output_tokens} out."
             )
 
-        reference = store.write_artifact(
-            run_id,
-            artifact_type=output.artifact_type,
-            content=output.content,
-            content_type="text/markdown",
-            slug="diff",
-            produced_by={"skill": "review-diff", "version": "0.1.0"},
-            provider_usage=provider_usage,
-        )
-
         return Result(
             success=True,
-            message=f"Review written to {reference.content_path}.{usage_note}",
+            message=f"Review written to {step.artifacts[0].content_path}.{usage_note}",
         )

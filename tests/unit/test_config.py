@@ -56,10 +56,32 @@ def test_load_config_raises_on_unsupported_provider(tmp_path: Path) -> None:
         load_config(tmp_path)
 
 
-def test_load_config_raises_on_anthropic_not_yet_supported(tmp_path: Path) -> None:
+def test_load_config_accepts_anthropic_provider(tmp_path: Path) -> None:
     _write_config(tmp_path, 'provider = "anthropic"\nartifact_root = "artifacts"\n')
 
-    with pytest.raises(ConfigValidationError, match="unsupported provider"):
+    config = load_config(tmp_path)
+
+    assert config.provider == "anthropic"
+    assert config.anthropic_model is None
+
+
+def test_load_config_reads_custom_anthropic_model(tmp_path: Path) -> None:
+    _write_config(
+        tmp_path,
+        'provider = "anthropic"\nartifact_root = "artifacts"\nanthropic_model = "claude-opus-5"\n',
+    )
+
+    config = load_config(tmp_path)
+
+    assert config.anthropic_model == "claude-opus-5"
+
+
+def test_load_config_raises_when_anthropic_model_not_a_string(tmp_path: Path) -> None:
+    _write_config(
+        tmp_path, 'provider = "anthropic"\nartifact_root = "artifacts"\nanthropic_model = 5\n'
+    )
+
+    with pytest.raises(ConfigValidationError, match="anthropic_model"):
         load_config(tmp_path)
 
 

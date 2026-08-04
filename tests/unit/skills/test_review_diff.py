@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from buildrail.core.skill_loader import load_skill
 from buildrail.providers import ProviderGateway
 from buildrail.providers.adapters.fake import FakeProvider
+from buildrail.skill_loader import load_skill
 from buildrail.skill_protocol import RunContext, SkillRequest
 
 _SKILL_SOURCE = (
