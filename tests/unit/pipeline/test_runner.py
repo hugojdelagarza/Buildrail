@@ -5,6 +5,7 @@ from buildrail.pipeline import PipelineContext, PipelineRunner
 from buildrail.providers import ProviderGateway
 from buildrail.providers.adapters.fake import FakeProvider
 from buildrail.providers.errors import AuthenticationError
+from buildrail.skill_protocol import SkillOutput, SkillResponse
 
 
 def _write_diff(tmp_path: Path) -> Path:
@@ -80,3 +81,31 @@ def test_run_is_deterministic_for_the_same_diff(tmp_path: Path) -> None:
         first.steps[0].response.outputs["review"].content
         == second.steps[0].response.outputs["review"].content
     )
+
+
+def test_run_resolves_steps_through_the_injected_registry_not_hardcoded_loading(
+    tmp_path: Path,
+) -> None:
+    diff_path = _write_diff(tmp_path)
+    store = ArtifactStore(tmp_path / "artifacts")
+    resolved: list[str] = []
+
+    class _StubRegistry:
+        def resolve(self, name: str):  # type: ignore[no-untyped-def]
+            resolved.append(name)
+
+            def _run(request: object, gateway: object) -> SkillResponse:
+                return SkillResponse(
+                    status="success",
+                    outputs={"review": SkillOutput(content="stub", artifact_type="review")},
+                )
+
+            return _run
+
+    runner = PipelineRunner(ProviderGateway(FakeProvider()), store, registry=_StubRegistry())  # type: ignore[arg-type]
+
+    result = runner.run(_context(tmp_path, diff_path, "20260804-000005-test"))
+
+    assert resolved == ["review-diff"]
+    assert result.success is True
+    assert result.steps[0].response.outputs["review"].content == "stub"

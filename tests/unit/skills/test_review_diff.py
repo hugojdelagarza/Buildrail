@@ -2,8 +2,8 @@ from pathlib import Path
 
 from buildrail.providers import ProviderGateway
 from buildrail.providers.adapters.fake import FakeProvider
-from buildrail.skill_loader import load_skill
 from buildrail.skill_protocol import RunContext, SkillRequest
+from buildrail.skills import SkillRegistry
 
 _SKILL_SOURCE = (
     Path(__file__).resolve().parents[3] / "skills" / "review-diff" / "skill.py"
@@ -33,7 +33,7 @@ def test_run_returns_success_with_a_structured_review(tmp_path: Path) -> None:
         "--- a/foo.py\n+++ b/foo.py\n@@\n-old line\n+new line\n+another new line\n",
         encoding="utf-8",
     )
-    run_review = load_skill("review-diff")
+    run_review = SkillRegistry().resolve("review-diff")
     gateway = ProviderGateway(FakeProvider())
 
     response = run_review(_request(diff_path), gateway)
@@ -50,7 +50,7 @@ def test_run_returns_success_with_a_structured_review(tmp_path: Path) -> None:
 
 def test_run_returns_failure_when_diff_file_is_missing(tmp_path: Path) -> None:
     missing_path = tmp_path / "does-not-exist.patch"
-    run_review = load_skill("review-diff")
+    run_review = SkillRegistry().resolve("review-diff")
     gateway = ProviderGateway(FakeProvider())
 
     response = run_review(_request(missing_path), gateway)

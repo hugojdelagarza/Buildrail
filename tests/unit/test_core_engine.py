@@ -201,3 +201,32 @@ def test_test_summary_summarizes_failures_with_fake_provider(
     content = list(run_dirs[0].glob("001-test-summary-*.md"))[0].read_text(encoding="utf-8")
     assert "[fake response]" in content
     assert "FAILED tests/test_x.py::test_y" in content
+
+
+def test_list_skills_includes_both_built_in_skills() -> None:
+    engine = CoreEngine()
+
+    result = engine.list_skills()
+
+    assert result.success is True
+    assert "review-diff" in result.message
+    assert "test-summary" in result.message
+
+
+def test_inspect_skill_returns_manifest_details_for_review_diff() -> None:
+    engine = CoreEngine()
+
+    result = engine.inspect_skill("review-diff")
+
+    assert result.success is True
+    assert "name: review-diff" in result.message
+    assert "protocol_version: 1.0" in result.message
+
+
+def test_inspect_skill_fails_without_traceback_for_unknown_skill() -> None:
+    engine = CoreEngine()
+
+    result = engine.inspect_skill("does-not-exist")
+
+    assert result.success is False
+    assert "does-not-exist" in result.message

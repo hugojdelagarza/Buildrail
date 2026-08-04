@@ -74,6 +74,16 @@ from the environment — never write it into `buildrail.toml` or any
 other tracked file. `.env` is git-ignored for this reason;
 `.env.example` documents the variable name only.
 
+### Discovering Skills
+
+Built-in skills are discovered by the Skill Registry, not hardcoded.
+List what's available, or inspect one skill's manifest:
+
+```
+buildrail skill list
+buildrail skill inspect review-diff
+```
+
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) — system design and module boundaries.

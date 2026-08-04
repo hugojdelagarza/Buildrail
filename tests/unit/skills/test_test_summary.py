@@ -6,8 +6,8 @@ import pytest
 from buildrail.providers import ProviderGateway
 from buildrail.providers.adapters.fake import FakeProvider
 from buildrail.providers.errors import AuthenticationError
-from buildrail.skill_loader import load_skill
 from buildrail.skill_protocol import RunContext, SkillRequest
+from buildrail.skills import SkillRegistry
 
 _SKILL_SOURCE = (
     Path(__file__).resolve().parents[3] / "skills" / "test-summary" / "skill.py"
@@ -39,7 +39,7 @@ def test_run_reports_success_without_calling_the_provider(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr("subprocess.run", lambda *a, **k: _completed(0, "2 passed in 0.01s\n"))
-    run_test_summary = load_skill("test-summary")
+    run_test_summary = SkillRegistry().resolve("test-summary")
     gateway = ProviderGateway(FakeProvider(error=AuthenticationError("must not be called")))
 
     response = run_test_summary(_request(tmp_path), gateway)
@@ -64,7 +64,7 @@ def test_run_summarizes_failures_via_the_provider(
         "1 failed in 0.01s\n"
     )
     monkeypatch.setattr("subprocess.run", lambda *a, **k: _completed(1, stdout))
-    run_test_summary = load_skill("test-summary")
+    run_test_summary = SkillRegistry().resolve("test-summary")
     gateway = ProviderGateway(FakeProvider())
 
     response = run_test_summary(_request(tmp_path), gateway)
@@ -84,7 +84,7 @@ def test_run_returns_failure_when_provider_errors(
         "subprocess.run",
         lambda *a, **k: _completed(1, "FAILED tests/test_foo.py::test_foo - boom\n1 failed\n"),
     )
-    run_test_summary = load_skill("test-summary")
+    run_test_summary = SkillRegistry().resolve("test-summary")
     gateway = ProviderGateway(FakeProvider(error=AuthenticationError("no key")))
 
     response = run_test_summary(_request(tmp_path), gateway)
@@ -101,7 +101,7 @@ def test_run_returns_failure_when_pytest_cannot_be_executed(
         raise OSError("pytest not found")
 
     monkeypatch.setattr("subprocess.run", _raise)
-    run_test_summary = load_skill("test-summary")
+    run_test_summary = SkillRegistry().resolve("test-summary")
     gateway = ProviderGateway(FakeProvider())
 
     response = run_test_summary(_request(tmp_path), gateway)

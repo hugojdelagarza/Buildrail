@@ -10,8 +10,8 @@ one step of several; it only ever sees a SkillRequest and a ProviderGateway.
 from buildrail.artifacts import ArtifactReference, ArtifactStore
 from buildrail.pipeline.types import PipelineContext, PipelineResult, PipelineStepResult
 from buildrail.providers import ProviderError, ProviderGateway
-from buildrail.skill_loader import load_skill
 from buildrail.skill_protocol import RunContext, SkillRequest, SkillResponse
+from buildrail.skills import SkillRegistry
 
 _DEFAULT_STEPS: tuple[str, ...] = ("review-diff",)
 
@@ -25,17 +25,19 @@ class PipelineRunner:
         store: ArtifactStore,
         *,
         steps: tuple[str, ...] = _DEFAULT_STEPS,
+        registry: SkillRegistry | None = None,
     ) -> None:
         self._gateway = gateway
         self._store = store
         self._steps = steps
+        self._registry = registry if registry is not None else SkillRegistry()
 
     def run(self, context: PipelineContext) -> PipelineResult:
         """Run each configured skill in order, persisting its outputs as artifacts."""
         step_results: list[PipelineStepResult] = []
 
         for index, skill_name in enumerate(self._steps, start=1):
-            run_skill = load_skill(skill_name)
+            run_skill = self._registry.resolve(skill_name)
             request = SkillRequest(
                 protocol_version="1.0",
                 run_context=RunContext(

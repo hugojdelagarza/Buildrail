@@ -27,6 +27,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("test-summary", help="Run the test suite and summarize any failures.")
 
+    skill_parser = subparsers.add_parser("skill", help="Discover and inspect built-in skills.")
+    skill_subparsers = skill_parser.add_subparsers(dest="skill_command", required=True)
+    skill_subparsers.add_parser("list", help="List discovered skills.")
+    inspect_parser = skill_subparsers.add_parser("inspect", help="Show one skill's manifest.")
+    inspect_parser.add_argument("name", help="The skill's name.")
+
     return parser
 
 
@@ -44,6 +50,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = engine.review(Path.cwd(), args.diff)
     elif args.command == "test-summary":
         result = engine.test_summary(Path.cwd())
+    elif args.command == "skill":
+        if args.skill_command == "list":
+            result = engine.list_skills()
+        else:
+            result = engine.inspect_skill(args.name)
     else:
         result = engine.run()
 

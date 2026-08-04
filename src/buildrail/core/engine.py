@@ -14,6 +14,7 @@ from buildrail.providers import (
     TextPart,
     create_provider,
 )
+from buildrail.skills import SkillError, SkillRegistry
 
 
 @dataclass(frozen=True)
@@ -140,3 +141,34 @@ class CoreEngine:
             success=True,
             message=f"Test summary written to {step.artifacts[0].content_path}.{usage_note}",
         )
+
+    def list_skills(self) -> Result:
+        """List every discovered built-in skill's name, version, and description."""
+        try:
+            manifests = SkillRegistry().list_skills()
+        except SkillError as exc:
+            return Result(success=False, message=str(exc))
+
+        if not manifests:
+            return Result(success=True, message="No skills found.")
+
+        lines = [f"{m.name} ({m.version}): {m.description}" for m in manifests]
+        return Result(success=True, message="\n".join(lines))
+
+    def inspect_skill(self, name: str) -> Result:
+        """Show the validated manifest details for one built-in skill."""
+        try:
+            manifest = SkillRegistry().get_manifest(name)
+        except SkillError as exc:
+            return Result(success=False, message=str(exc))
+
+        lines = [
+            f"name: {manifest.name}",
+            f"version: {manifest.version}",
+            f"protocol_version: {manifest.protocol_version}",
+            f"description: {manifest.description}",
+            f"entrypoint: {manifest.entrypoint}",
+            f"requires_provider: {manifest.requires_provider}",
+            f"path: {manifest.path}",
+        ]
+        return Result(success=True, message="\n".join(lines))

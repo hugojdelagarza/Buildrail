@@ -32,14 +32,18 @@ artifact.
   skill, Provider Gateway, and adapter have not been implemented yet.
 - Detailed in `docs/milestone-1.md`.
 
-## Phase 2 — Skill Registry — **Not started**
+## Phase 2 — Skill Registry — **Complete**
 
-- Support more than one skill, discovered and listed by the CLI
-  (`buildrail skill list`).
-- Skill manifest format is already specified (`docs/skills.md`); this
-  phase is about supporting *multiple* registered skills, not designing
-  the format from scratch.
-- No pipelines yet — skills still run individually.
+- Two built-in skills (`review-diff`, `test-summary`), discovered and
+  listed by the CLI (`buildrail skill list`, `buildrail skill inspect
+  <name>`) via a manifest-driven `SkillRegistry`, replacing Milestone
+  1's hardcoded skill loading.
+- Validates the minimal manifest subset both skills actually use;
+  rejects duplicate names, missing/malformed manifests, unsupported
+  protocol versions, and missing entrypoints.
+- Skills still run in-process (docs/skills.md's phasing note) and
+  pipelines are still fixed step lists — subprocess transport and a
+  project-local skill override path remain for later phases.
 
 ## Phase 3 — Pipelines — **Not started**
 

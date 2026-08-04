@@ -181,3 +181,34 @@ def test_test_summary_fails_without_traceback_when_config_missing(
     assert exit_code == 1
     assert captured.err == ""
     assert "No configuration file found" in captured.out
+
+
+def test_skill_list_prints_both_built_in_skills(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(["skill", "list"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "review-diff" in captured.out
+    assert "test-summary" in captured.out
+
+
+def test_skill_inspect_prints_manifest_details(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(["skill", "inspect", "review-diff"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "name: review-diff" in captured.out
+    assert "protocol_version: 1.0" in captured.out
+
+
+def test_skill_inspect_fails_without_traceback_for_unknown_skill(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(["skill", "inspect", "does-not-exist"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "does-not-exist" in captured.out
