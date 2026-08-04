@@ -35,6 +35,16 @@ _RUN_ID_TIMESTAMP = re.compile(r"^(\d{8})-(\d{6})-")
 
 
 @dataclass(frozen=True)
+class PipelineStepSummary:
+    """One step's recorded outcome within a named pipeline run (docs/artifacts.md)."""
+
+    name: str
+    status: str
+    reason: str | None
+    artifact_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RunSummary:
     """One run's index-level info, built only from its run.json."""
 
@@ -43,6 +53,7 @@ class RunSummary:
     created_at: str | None
     artifact_count: int
     artifact_types: tuple[str, ...]
+    pipeline: str | None = None
 
 
 @dataclass(frozen=True)
@@ -60,6 +71,7 @@ class ArtifactDetail:
     created_at: str | None
     checksum: str | None
     content_type: str | None
+    pipeline: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +82,9 @@ class RunDetail:
     status: str
     created_at: str | None
     artifacts: tuple[ArtifactDetail, ...]
+    pipeline: str | None = None
+    pipeline_steps: tuple[PipelineStepSummary, ...] = ()
+    duration_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +150,9 @@ class ArtifactReader:
             status=summary.status,
             created_at=summary.created_at,
             artifacts=tuple(details),
+            pipeline=summary.pipeline,
+            pipeline_steps=_pipeline_steps(manifest, manifest_path),
+            duration_seconds=_optional_float(manifest, "duration_seconds", manifest_path),
         )
 
     def get_artifact(self, artifact_id: str) -> ArtifactPayload:
@@ -184,6 +202,9 @@ class ArtifactReader:
         provider_usage = metadata.get("provider_usage")
         if provider_usage is not None and not isinstance(provider_usage, dict):
             raise MalformedMetadataError(f"{metadata_path}: 'provider_usage' must be an object.")
+        pipeline = metadata.get("pipeline")
+        if pipeline is not None and not isinstance(pipeline, str):
+            raise MalformedMetadataError(f"{metadata_path}: 'pipeline' must be a string.")
 
         content_ref = _require_str(metadata, "content_ref", metadata_path)
 
@@ -196,6 +217,7 @@ class ArtifactReader:
             produced_by_skill=(produced_by or {}).get("skill"),
             produced_by_version=(produced_by or {}).get("version"),
             provider_usage=provider_usage,
+            pipeline=pipeline,
             created_at=metadata.get("created_at"),
             checksum=metadata.get("checksum"),
             content_type=metadata.get("content_type"),
@@ -220,15 +242,23 @@ def _lookup_status(run_dir: Path, artifact_id: str) -> str:
 
 def _summarize_run(run_id: str, manifest: dict[str, Any], source: Path) -> RunSummary:
     artifacts = _manifest_artifacts(manifest, source)
-    statuses = [_require_str(entry, "status", source) for entry in artifacts]
     types = tuple(_require_str(entry, "type", source) for entry in artifacts)
 
-    if not statuses:
-        status = "empty"
-    elif all(s == "success" for s in statuses):
-        status = "success"
+    explicit_status = manifest.get("status")
+    if explicit_status is not None:
+        status = _require_str(manifest, "status", source)
     else:
-        status = "failure"
+        statuses = [_require_str(entry, "status", source) for entry in artifacts]
+        if not statuses:
+            status = "empty"
+        elif all(s == "success" for s in statuses):
+            status = "success"
+        else:
+            status = "failure"
+
+    pipeline = manifest.get("pipeline")
+    if pipeline is not None and not isinstance(pipeline, str):
+        raise MalformedMetadataError(f"{source}: 'pipeline' must be a string.")
 
     return RunSummary(
         run_id=run_id,
@@ -236,7 +266,47 @@ def _summarize_run(run_id: str, manifest: dict[str, Any], source: Path) -> RunSu
         created_at=_created_at_from_run_id(run_id),
         artifact_count=len(artifacts),
         artifact_types=types,
+        pipeline=pipeline,
     )
+
+
+def _pipeline_steps(manifest: dict[str, Any], source: Path) -> tuple[PipelineStepSummary, ...]:
+    raw_steps = manifest.get("pipeline_steps")
+    if raw_steps is None:
+        return ()
+    if not isinstance(raw_steps, list):
+        raise MalformedMetadataError(f"{source}: 'pipeline_steps' must be a list.")
+
+    steps = []
+    for entry in raw_steps:
+        if not isinstance(entry, dict):
+            raise MalformedMetadataError(f"{source}: each pipeline step must be an object.")
+        artifact_ids = entry.get("artifact_ids", [])
+        if not isinstance(artifact_ids, list) or not all(
+            isinstance(item, str) for item in artifact_ids
+        ):
+            raise MalformedMetadataError(f"{source}: 'artifact_ids' must be a list of strings.")
+        reason = entry.get("reason")
+        if reason is not None and not isinstance(reason, str):
+            raise MalformedMetadataError(f"{source}: a pipeline step's 'reason' must be a string.")
+        steps.append(
+            PipelineStepSummary(
+                name=_require_str(entry, "name", source),
+                status=_require_str(entry, "status", source),
+                reason=reason,
+                artifact_ids=tuple(artifact_ids),
+            )
+        )
+    return tuple(steps)
+
+
+def _optional_float(manifest: dict[str, Any], key: str, source: Path) -> float | None:
+    value = manifest.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int | float):
+        raise MalformedMetadataError(f"{source}: '{key}' must be a number.")
+    return float(value)
 
 
 def _created_at_from_run_id(run_id: str) -> str | None:

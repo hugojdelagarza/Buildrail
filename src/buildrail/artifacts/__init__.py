@@ -15,6 +15,7 @@ from buildrail.artifacts.reader import (
     ArtifactDetail,
     ArtifactPayload,
     ArtifactReader,
+    PipelineStepSummary,
     RunDetail,
     RunSummary,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "InvalidIdentifierError",
     "InvalidLimitError",
     "MalformedMetadataError",
+    "PipelineStepSummary",
     "RunDetail",
     "RunNotFoundError",
     "RunSummary",

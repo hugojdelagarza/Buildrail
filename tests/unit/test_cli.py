@@ -446,3 +446,77 @@ def test_artifacts_inspect_rejects_path_traversal(
     assert exit_code == 1
     assert captured.err == ""
     assert "Invalid" in captured.out
+
+
+def _mock_verify_checks_for_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mock only verify-project's checks (ruff/mypy/pytest); real git calls pass through."""
+    real_run = subprocess.run
+
+    def _run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args and args[0] == "git":
+            result: subprocess.CompletedProcess[str] = real_run(args, **kwargs)  # type: ignore[call-overload]
+            return result
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("subprocess.run", _run)
+
+
+def _init_precommit_repo(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test User")
+    (tmp_path / "a.txt").write_text("a\n", encoding="utf-8")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "chore: initial commit")
+
+
+def test_run_pre_commit_succeeds_with_diff_and_review(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("a\nb\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    _mock_verify_checks_for_cli(monkeypatch)
+
+    exit_code = main(["run", "pre-commit", "--base", "HEAD"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "verify-project: passed" in captured.out
+    assert "review-diff: passed" in captured.out
+
+
+def test_run_pre_commit_skip_review_flag(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("a\nb\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    _mock_verify_checks_for_cli(monkeypatch)
+
+    exit_code = main(["run", "pre-commit", "--base", "HEAD", "--skip-review"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "review-diff: skipped (--skip-review was set)" in captured.out
+
+
+def test_run_pre_commit_fails_without_traceback_outside_a_git_repository(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["run", "pre-commit"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "Git repository" in captured.out

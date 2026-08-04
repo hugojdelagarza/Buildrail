@@ -1,15 +1,24 @@
 """The Core Engine: Buildrail's single orchestration entry point."""
 
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from buildrail import vcs
 from buildrail.artifacts import ArtifactReader, ArtifactReadError, ArtifactStore
 from buildrail.config import BuildrailConfig, ConfigError, load_config
 from buildrail.hooks import HookError
 from buildrail.hooks import install as install_hook_file
 from buildrail.hooks import status as hook_status_file
 from buildrail.hooks import uninstall as uninstall_hook_file
-from buildrail.pipeline import PipelineContext, PipelineRunner
+from buildrail.pipeline import (
+    NamedPipelineResult,
+    NamedStepOutcome,
+    PipelineContext,
+    PipelineRunner,
+)
+from buildrail.pipeline.types import PipelineResult
 from buildrail.providers import (
     Message,
     ProviderError,
@@ -39,6 +48,78 @@ def _require_provider(config: BuildrailConfig) -> str:
             "to buildrail.toml."
         )
     return config.provider
+
+
+def _outcome_from_step(result: PipelineResult, name: str) -> NamedStepOutcome:
+    """Convert a single-step PipelineResult into a NamedStepOutcome for pre-commit reporting."""
+    step = result.steps[-1] if result.steps else None
+    return NamedStepOutcome(
+        name=name,
+        status="passed" if result.success else "failed",
+        reason=None if result.success else result.error,
+        artifacts=step.artifacts if step else (),
+    )
+
+
+def _verify_outcome(result: PipelineResult) -> NamedStepOutcome:
+    """Convert verify-project's PipelineResult into a NamedStepOutcome.
+
+    verify-project's SkillResponse always reports "success" (per its own
+    contract: failing local checks is a normal outcome, not a skill
+    execution failure) — actual pass/fail lives in its output metadata,
+    exactly as the standalone `buildrail verify` command already reads it.
+    """
+    if not result.success or not result.steps:
+        return _outcome_from_step(result, "verify-project")
+
+    step = result.steps[-1]
+    output = step.response.outputs.get("report")
+    metadata = output.metadata if output is not None and output.metadata else {}
+    passed = bool(metadata.get("passed", False))
+    failed_check = metadata.get("failed_check")
+    reason = (
+        None if passed else f"failed check: {failed_check}" if failed_check else "checks failed"
+    )
+    return NamedStepOutcome(
+        name="verify-project",
+        status="passed" if passed else "failed",
+        reason=reason,
+        artifacts=step.artifacts,
+    )
+
+
+def _write_temp_diff(diff_text: str) -> Path:
+    """Write a collected diff to a private temp file for review-diff's file-path input."""
+    fd, path_str = tempfile.mkstemp(prefix="buildrail-precommit-", suffix=".patch")
+    path = Path(path_str)
+    with open(fd, "w", encoding="utf-8") as handle:
+        handle.write(diff_text)
+    return path
+
+
+def _build_pre_commit_message(
+    result: NamedPipelineResult, provider_usage: dict[str, object] | None
+) -> str:
+    status_word = "PASSED" if result.success else "FAILED"
+    lines = [
+        "Pipeline: pre-commit",
+        f"Status: {status_word}",
+        f"Run: {result.run_id}",
+    ]
+    for outcome in result.steps:
+        line = f"- {outcome.name}: {outcome.status}"
+        if outcome.reason:
+            line += f" ({outcome.reason})"
+        lines.append(line)
+        for artifact in outcome.artifacts:
+            lines.append(f"    artifact: {artifact.id} -> {artifact.content_path}")
+    if provider_usage:
+        lines.append(
+            f"Provider: {provider_usage['provider']}/{provider_usage['model']}, "
+            f"tokens: {provider_usage['input_tokens']} in / {provider_usage['output_tokens']} out."
+        )
+    lines.append(f"Duration: {result.duration_seconds:.2f}s")
+    return "\n".join(lines)
 
 
 class CoreEngine:
@@ -365,6 +446,20 @@ class CoreEngine:
             f"created_at: {run.created_at or 'unknown'}",
             f"artifact_count: {len(run.artifacts)}",
         ]
+        if run.pipeline:
+            lines.append(f"pipeline: {run.pipeline}")
+        if run.duration_seconds is not None:
+            lines.append(f"duration_seconds: {run.duration_seconds:.2f}")
+        for step in run.pipeline_steps:
+            lines.append("")
+            lines.append(f"step: {step.name}")
+            lines.append(f"  status: {step.status}")
+            if step.reason:
+                lines.append(f"  reason: {step.reason}")
+            lines.append(f"  artifact_ids: {list(step.artifact_ids) or 'none'}")
+        if run.pipeline_steps:
+            lines.append("")
+            lines.append("artifacts:")
         for artifact in run.artifacts:
             produced_by = artifact.produced_by_skill or "unknown"
             if artifact.produced_by_version:
@@ -402,6 +497,7 @@ class CoreEngine:
             f"content_type: {detail.content_type or 'unknown'}",
             f"produced_by: {produced_by}",
             f"run_id: {detail.run_id}",
+            f"pipeline: {detail.pipeline or 'none'}",
             f"created_at: {detail.created_at or 'unknown'}",
             f"checksum: {detail.checksum or 'unknown'}",
             f"provider_usage: {detail.provider_usage or 'none'}",
@@ -415,3 +511,164 @@ class CoreEngine:
                 f"{len(content)} characters]"
             )
         return Result(success=True, message="\n".join(lines))
+
+    def run_pre_commit(
+        self, project_root: Path, *, base_ref: str | None = None, skip_review: bool = False
+    ) -> Result:
+        """Run the pre-commit pipeline: verify-project, then review-diff if a diff exists.
+
+        Both steps share one run id and one run.json. No provider is ever
+        constructed unless verification passed, a non-empty diff exists
+        against the resolved base ref, and --skip-review was not set.
+        """
+        start = time.perf_counter()
+        try:
+            config = load_config(project_root)
+        except ConfigError as exc:
+            return Result(success=False, message=str(exc))
+
+        try:
+            vcs.repository_root(project_root)
+        except vcs.GitError as exc:
+            return Result(success=False, message=str(exc))
+
+        store = ArtifactStore(project_root / config.artifact_root)
+        run_id = store.generate_run_id()
+
+        verify_context = PipelineContext(
+            run_id=run_id, workdir=str(project_root), inputs={}, pipeline_name="pre-commit"
+        )
+        verify_result = PipelineRunner(None, store, steps=("verify-project",)).run(verify_context)
+        verify_outcome = _verify_outcome(verify_result)
+        outcomes = [verify_outcome]
+
+        provider_usage: dict[str, object] | None = None
+        if verify_outcome.status == "passed":
+            review_outcome, provider_usage = self._run_pre_commit_review(
+                project_root, config, store, run_id, base_ref, skip_review
+            )
+            outcomes.append(review_outcome)
+
+        return self._finish_pre_commit(store, run_id, outcomes, start, provider_usage)
+
+    def _run_pre_commit_review(
+        self,
+        project_root: Path,
+        config: BuildrailConfig,
+        store: ArtifactStore,
+        run_id: str,
+        base_ref: str | None,
+        skip_review: bool,
+    ) -> tuple[NamedStepOutcome, dict[str, object] | None]:
+        """Resolve whether review-diff should run, and run it if so. Never raises."""
+        if skip_review:
+            return (
+                NamedStepOutcome(
+                    name="review-diff",
+                    status="skipped",
+                    reason="--skip-review was set",
+                    artifacts=(),
+                ),
+                None,
+            )
+
+        try:
+            resolved_base = vcs.resolve_base_ref(project_root, base_ref)
+            diff_result = vcs.collect_diff(project_root, resolved_base)
+        except vcs.GitError as exc:
+            return (
+                NamedStepOutcome(
+                    name="review-diff", status="failed", reason=str(exc), artifacts=()
+                ),
+                None,
+            )
+
+        if diff_result.is_empty:
+            return (
+                NamedStepOutcome(
+                    name="review-diff",
+                    status="skipped",
+                    reason=f"no changes against {resolved_base}",
+                    artifacts=(),
+                ),
+                None,
+            )
+
+        try:
+            provider = create_provider(_require_provider(config), model=config.anthropic_model)
+        except (ConfigError, ProviderError) as exc:
+            return (
+                NamedStepOutcome(
+                    name="review-diff", status="failed", reason=str(exc), artifacts=()
+                ),
+                None,
+            )
+
+        diff_file = _write_temp_diff(diff_result.diff_text)
+        try:
+            gateway = ProviderGateway(provider)
+            review_context = PipelineContext(
+                run_id=run_id,
+                workdir=str(project_root),
+                inputs={"diff": str(diff_file)},
+                provider_name=config.provider,
+                pipeline_name="pre-commit",
+            )
+            review_result = PipelineRunner(gateway, store, steps=("review-diff",)).run(
+                review_context
+            )
+        finally:
+            diff_file.unlink(missing_ok=True)
+
+        outcome = _outcome_from_step(review_result, "review-diff")
+        usage: dict[str, object] | None = None
+        if review_result.success and review_result.steps:
+            output = review_result.steps[-1].response.outputs.get("review")
+            if output is not None and output.usage is not None and output.model_used is not None:
+                usage = {
+                    "provider": config.provider,
+                    "model": output.model_used,
+                    "input_tokens": output.usage.input_tokens,
+                    "output_tokens": output.usage.output_tokens,
+                }
+        return outcome, usage
+
+    def _finish_pre_commit(
+        self,
+        store: ArtifactStore,
+        run_id: str,
+        outcomes: list[NamedStepOutcome],
+        start: float,
+        provider_usage: dict[str, object] | None,
+    ) -> Result:
+        success = all(o.status != "failed" for o in outcomes)
+        duration = time.perf_counter() - start
+        pipeline_result = NamedPipelineResult(
+            name="pre-commit",
+            run_id=run_id,
+            success=success,
+            steps=tuple(outcomes),
+            duration_seconds=duration,
+        )
+
+        store.write_run_summary(
+            run_id,
+            pipeline=pipeline_result.name,
+            status="success" if pipeline_result.success else "failure",
+            steps=[
+                {
+                    "name": o.name,
+                    "status": o.status,
+                    "reason": o.reason,
+                    "artifact_ids": [a.id for a in o.artifacts],
+                }
+                for o in pipeline_result.steps
+            ],
+            duration_seconds=pipeline_result.duration_seconds,
+            provider_usage=provider_usage,
+        )
+
+        return Result(
+            success=pipeline_result.success,
+            message=_build_pre_commit_message(pipeline_result, provider_usage),
+        )

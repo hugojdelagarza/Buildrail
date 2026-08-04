@@ -149,6 +149,56 @@ def test_get_run_raises_for_malformed_run_json(tmp_path: Path) -> None:
         reader.get_run("20260101-000000-000000")
 
 
+def test_get_run_surfaces_pipeline_level_fields(tmp_path: Path) -> None:
+    run_id, _ = _write_review(tmp_path, timestamp=datetime(2026, 8, 3, tzinfo=UTC), suffix="abc123")
+    store = _store(tmp_path, timestamp=datetime(2026, 8, 3, tzinfo=UTC), suffix="abc123")
+    store.write_run_summary(
+        run_id,
+        pipeline="pre-commit",
+        status="success",
+        steps=[
+            {
+                "name": "verify-project",
+                "status": "passed",
+                "reason": None,
+                "artifact_ids": ["ignored"],
+            },
+            {
+                "name": "review-diff",
+                "status": "skipped",
+                "reason": "no changes",
+                "artifact_ids": [],
+            },
+        ],
+        duration_seconds=2.5,
+    )
+    reader = ArtifactReader(tmp_path)
+
+    run = reader.get_run(run_id)
+
+    assert run.pipeline == "pre-commit"
+    assert run.duration_seconds == 2.5
+    assert len(run.pipeline_steps) == 2
+    assert run.pipeline_steps[0].name == "verify-project"
+    assert run.pipeline_steps[0].status == "passed"
+    assert run.pipeline_steps[1].status == "skipped"
+    assert run.pipeline_steps[1].reason == "no changes"
+
+
+def test_list_runs_prefers_explicit_status_over_derived_status(tmp_path: Path) -> None:
+    run_id, _ = _write_review(tmp_path, timestamp=datetime(2026, 8, 3, tzinfo=UTC), suffix="abc123")
+    store = _store(tmp_path, timestamp=datetime(2026, 8, 3, tzinfo=UTC), suffix="abc123")
+    store.write_run_summary(
+        run_id, pipeline="pre-commit", status="failure", steps=[], duration_seconds=1.0
+    )
+    reader = ArtifactReader(tmp_path)
+
+    (summary,) = reader.list_runs()
+
+    assert summary.status == "failure"
+    assert summary.pipeline == "pre-commit"
+
+
 def test_get_artifact_returns_metadata_and_verified_content(tmp_path: Path) -> None:
     run_id, reference = _write_review(
         tmp_path, timestamp=datetime(2026, 8, 3, tzinfo=UTC), suffix="abc123", content="hello"

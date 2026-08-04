@@ -69,6 +69,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     artifacts_inspect_parser.add_argument("artifact_id", help="The artifact's id.")
 
+    run_parser = subparsers.add_parser("run", help="Run a named pipeline.")
+    run_subparsers = run_parser.add_subparsers(dest="pipeline_name", required=True)
+    pre_commit_parser = run_subparsers.add_parser(
+        "pre-commit", help="Run verify-project, then review-diff if there are Git changes."
+    )
+    pre_commit_parser.add_argument(
+        "--base", dest="base_ref", default=None, help="Git ref to diff against."
+    )
+    pre_commit_parser.add_argument(
+        "--skip-review", action="store_true", help="Skip review-diff even if changes exist."
+    )
+
     return parser
 
 
@@ -109,6 +121,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = engine.inspect_run(Path.cwd(), args.run_id)
     elif args.command == "artifacts":
         result = engine.inspect_artifact(Path.cwd(), args.artifact_id)
+    elif args.command == "run":
+        result = engine.run_pre_commit(
+            Path.cwd(), base_ref=args.base_ref, skip_review=args.skip_review
+        )
     else:
         result = engine.run()
 

@@ -93,6 +93,24 @@ buildrail verify
 Exits `0` when every check passes, nonzero otherwise — safe to use as a
 pre-commit or CI gate.
 
+### The Pre-Commit Pipeline
+
+`buildrail run pre-commit` is Buildrail's daily workflow: it runs
+`verify-project` first, then `review-diff` — but only when there's a
+Git diff to review — sharing one run and one artifact history:
+
+```
+buildrail run pre-commit
+buildrail run pre-commit --base main
+buildrail run pre-commit --skip-review
+```
+
+Failed verification blocks the pipeline before any provider is
+constructed. With no `--base`, the diff is collected against the
+branch's upstream if one is configured, otherwise `HEAD~1`. If there
+are no changes against the resolved base, review is skipped (no
+provider call) and the pipeline still reports success.
+
 ### Git Pre-Commit Hook
 
 `buildrail hooks install` adds a local Git pre-commit hook that runs
@@ -109,7 +127,9 @@ buildrail hooks uninstall
 
 `uninstall` removes only Buildrail's managed block, leaving any
 unrelated hook content exactly as it was. This is a local pre-commit
-hook only — it does not add a pre-push hook or any CI workflow.
+hook only — it does not add a pre-push hook or any CI workflow. The
+installed hook still runs `buildrail verify` for now, not the
+pre-commit pipeline above.
 
 ### Discovering Skills
 

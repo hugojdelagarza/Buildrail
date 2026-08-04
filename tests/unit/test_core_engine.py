@@ -1,4 +1,6 @@
+import json
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -559,3 +561,216 @@ def test_list_runs_uses_custom_artifact_root(tmp_path: Path) -> None:
     assert "status=success" in result.message
     assert (tmp_path / "custom-out").is_dir()
     assert not (tmp_path / "artifacts").exists()
+
+
+def _init_precommit_repo(tmp_path: Path, *, with_provider: bool = True) -> None:
+    config = 'provider = "fake"\n' if with_provider else ""
+    (tmp_path / "buildrail.toml").write_text(
+        f'{config}artifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test User")
+    (tmp_path / "a.txt").write_text("a\n", encoding="utf-8")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "chore: initial commit")
+
+
+def _mock_verify_checks(monkeypatch: pytest.MonkeyPatch, *, fail_check: str | None = None) -> None:
+    """Mock only verify-project's checks (ruff/mypy/pytest); real git calls pass through."""
+    real_run = subprocess.run
+
+    def _run(args: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        args_list = list(args)
+        if args_list and args_list[0] == "git":
+            result: subprocess.CompletedProcess[str] = real_run(args_list, **kwargs)  # type: ignore[call-overload]
+            return result
+        if fail_check and fail_check in args_list:
+            return subprocess.CompletedProcess(
+                args=args_list, returncode=1, stdout="check failed", stderr=""
+            )
+        return subprocess.CompletedProcess(args=args_list, returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("subprocess.run", _run)
+
+
+def test_run_pre_commit_verify_passes_diff_exists_review_passes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("a\nb\n", encoding="utf-8")
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(tmp_path, base_ref="HEAD")
+
+    assert result.success is True
+    assert "verify-project: passed" in result.message
+    assert "review-diff: passed" in result.message
+    assert "tokens:" in result.message
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    assert len(run_dirs) == 1
+    names = [p.name for p in run_dirs[0].glob("*.md")]
+    assert any("verification-report" in n for n in names)
+    assert any("review" in n for n in names)
+
+
+def test_run_pre_commit_stops_when_verification_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("a\nb\n", encoding="utf-8")
+    _mock_verify_checks(monkeypatch, fail_check="mypy")
+
+    def _fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("create_provider must not be called when verification fails")
+
+    monkeypatch.setattr("buildrail.core.engine.create_provider", _fail_if_called)
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(tmp_path, base_ref="HEAD")
+
+    assert result.success is False
+    assert "verify-project: failed" in result.message
+    assert "review-diff" not in result.message
+
+
+def test_run_pre_commit_skips_review_when_diff_is_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path)
+    _mock_verify_checks(monkeypatch)
+
+    def _fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("create_provider must not be called for an empty diff")
+
+    monkeypatch.setattr("buildrail.core.engine.create_provider", _fail_if_called)
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(tmp_path, base_ref="HEAD")
+
+    assert result.success is True
+    assert "review-diff: skipped" in result.message
+    assert "no changes" in result.message
+
+
+def test_run_pre_commit_skip_review_flag_skips_review_and_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("a\nb\n", encoding="utf-8")
+    _mock_verify_checks(monkeypatch)
+
+    def _fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("create_provider must not be called when --skip-review is set")
+
+    monkeypatch.setattr("buildrail.core.engine.create_provider", _fail_if_called)
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(tmp_path, base_ref="HEAD", skip_review=True)
+
+    assert result.success is True
+    assert "review-diff: skipped (--skip-review was set)" in result.message
+
+
+def test_run_pre_commit_fails_cleanly_when_provider_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path, with_provider=False)
+    (tmp_path / "a.txt").write_text("a\nb\n", encoding="utf-8")
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(tmp_path, base_ref="HEAD")
+
+    assert result.success is False
+    assert "verify-project: passed" in result.message
+    assert "No provider configured" in result.message
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    assert len(run_dirs) == 1
+    assert list(run_dirs[0].glob("*verification-report*"))
+
+
+def test_run_pre_commit_fails_for_invalid_base_ref(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path)
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(tmp_path, base_ref="does-not-exist")
+
+    assert result.success is False
+    assert "not a valid Git ref" in result.message
+
+
+def test_run_pre_commit_fails_when_not_a_git_repository(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(tmp_path)
+
+    assert result.success is False
+    assert "Git repository" in result.message
+
+
+def test_run_pre_commit_falls_back_to_head_parent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path)
+    (tmp_path / "b.txt").write_text("b\n", encoding="utf-8")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "feat: add b")
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(tmp_path)
+
+    assert result.success is True
+    assert "review-diff: passed" in result.message
+
+
+def test_run_pre_commit_prefers_upstream_branch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    remote = tmp_path / "remote.git"
+    _git(tmp_path, "init", "-q", "--bare", str(remote))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_precommit_repo(repo)
+    _git(repo, "remote", "add", "origin", str(remote))
+    _git(repo, "push", "-q", "-u", "origin", "HEAD:main")
+    (repo / "a.txt").write_text("a\nb\n", encoding="utf-8")
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(repo)
+
+    assert result.success is True
+    assert "review-diff: passed" in result.message
+
+
+def test_run_pre_commit_writes_ordered_steps_and_usage_to_run_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path)
+    (tmp_path / "a.txt").write_text("a\nb\n", encoding="utf-8")
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(tmp_path, base_ref="HEAD")
+
+    assert result.success is True
+    run_dir = next((tmp_path / "artifacts").iterdir())
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert manifest["pipeline"] == "pre-commit"
+    assert manifest["status"] == "success"
+    assert [s["name"] for s in manifest["pipeline_steps"]] == ["verify-project", "review-diff"]
+    assert manifest["provider_usage_totals"]["model"] == "fake-model"
+
+    meta_files = list(run_dir.glob("*.meta.json"))
+    assert len(meta_files) == 2
+    for meta_file in meta_files:
+        assert json.loads(meta_file.read_text(encoding="utf-8"))["pipeline"] == "pre-commit"

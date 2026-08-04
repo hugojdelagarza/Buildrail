@@ -45,12 +45,18 @@ artifact.
   pipelines are still fixed step lists — subprocess transport and a
   project-local skill override path remain for later phases.
 
-## Phase 3 — Pipelines — **Not started**
+## Phase 3 — Pipelines — **Complete**
 
-- Introduce the Pipeline Runner: a named, linear sequence of skills
-  with output from one step available to the next.
-- CLI gains `buildrail run <pipeline>`.
-- Still single AI provider; still local-first.
+- The CLI gained `buildrail run <pipeline>`, with the first named
+  pipeline, `pre-commit` (`verify-project`, then `review-diff` only
+  when there's a Git diff to review), registered in code — not yet
+  user-authored YAML/TOML pipeline files.
+- All of a named pipeline's steps share one run id and one `run.json`,
+  which now also records the pipeline name, overall status, ordered
+  step results (including steps skipped by pipeline-level logic, e.g.
+  no diff), and aggregate provider usage.
+- Still a linear sequence (no DAG, no parallelism, no retries); still
+  single AI provider; still local-first.
 
 ## Phase 4 — Second AI Provider — **Not started**
 

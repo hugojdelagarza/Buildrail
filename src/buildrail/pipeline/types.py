@@ -15,6 +15,9 @@ class PipelineContext:
     inputs: dict[str, str]
     # None for provider-free skills (e.g. verify-project), which never construct a provider.
     provider_name: str | None = None
+    # Set by a named pipeline (e.g. "pre-commit") so each artifact records which
+    # pipeline produced it; None for a skill invoked standalone (docs/artifacts.md §4).
+    pipeline_name: str | None = None
 
 
 @dataclass(frozen=True)

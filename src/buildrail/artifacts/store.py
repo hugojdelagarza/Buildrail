@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from buildrail.artifacts.ids import Clock, IdGenerator, SystemClock, SystemIdGenerator
 
@@ -47,6 +48,7 @@ class ArtifactStore:
         slug: str,
         produced_by: dict[str, str],
         provider_usage: dict[str, object] | None = None,
+        pipeline: str | None = None,
     ) -> ArtifactReference:
         """Create the run directory if needed and atomically write one artifact into it."""
         run_dir = self._root / run_id
@@ -68,6 +70,7 @@ class ArtifactStore:
             "type": artifact_type,
             "produced_by": produced_by,
             "run_id": run_id,
+            "pipeline": pipeline,
             "step_index": 1,
             "created_at": self._clock.utcnow().isoformat(),
             "content_ref": content_path.name,
@@ -87,15 +90,46 @@ class ArtifactStore:
     def _append_to_run_manifest(
         self, run_dir: Path, run_id: str, artifact_id: str, artifact_type: str, path_name: str
     ) -> None:
-        manifest_path = run_dir / "run.json"
-        if manifest_path.is_file():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        else:
-            manifest = {"run_id": run_id, "artifacts": []}
+        manifest = self._load_or_init_manifest(run_dir, run_id)
         manifest["artifacts"].append(
             {"id": artifact_id, "type": artifact_type, "path": path_name, "status": "success"}
         )
-        _atomic_write(manifest_path, json.dumps(manifest, indent=2, sort_keys=True))
+        _atomic_write(run_dir / "run.json", json.dumps(manifest, indent=2, sort_keys=True))
+
+    def write_run_summary(
+        self,
+        run_id: str,
+        *,
+        pipeline: str,
+        status: str,
+        steps: list[dict[str, object]],
+        duration_seconds: float,
+        provider_usage: dict[str, object] | None = None,
+    ) -> None:
+        """Record named-pipeline-level metadata (status, ordered steps, duration) in run.json.
+
+        Complements `write_artifact`'s per-artifact entries with the
+        aggregate facts a named, multi-step pipeline needs to report —
+        e.g. a step that was skipped and so never produced an artifact.
+        """
+        run_dir = self._root / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        manifest = self._load_or_init_manifest(run_dir, run_id)
+        manifest["pipeline"] = pipeline
+        manifest["status"] = status
+        manifest["pipeline_steps"] = steps
+        manifest["duration_seconds"] = duration_seconds
+        if provider_usage is not None:
+            manifest["provider_usage_totals"] = provider_usage
+        _atomic_write(run_dir / "run.json", json.dumps(manifest, indent=2, sort_keys=True))
+
+    @staticmethod
+    def _load_or_init_manifest(run_dir: Path, run_id: str) -> dict[str, Any]:
+        manifest_path = run_dir / "run.json"
+        if manifest_path.is_file():
+            manifest: dict[str, Any] = json.loads(manifest_path.read_text(encoding="utf-8"))
+            return manifest
+        return {"run_id": run_id, "artifacts": []}
 
 
 def _atomic_write(path: Path, content: str) -> None:

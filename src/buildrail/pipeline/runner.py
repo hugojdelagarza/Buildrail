@@ -92,6 +92,7 @@ class PipelineRunner:
                 slug=output_name,
                 produced_by={"skill": skill_name, "version": "0.1.0"},
                 provider_usage=provider_usage,
+                pipeline=context.pipeline_name,
             )
             references.append(reference)
         return tuple(references)
