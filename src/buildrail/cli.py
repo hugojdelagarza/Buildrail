@@ -25,6 +25,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     review_parser.add_argument("--diff", required=True, type=Path, help="Path to a unified diff.")
 
+    subparsers.add_parser("test-summary", help="Run the test suite and summarize any failures.")
+
     return parser
 
 
@@ -40,6 +42,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = engine.check_provider(Path.cwd())
     elif args.command == "review":
         result = engine.review(Path.cwd(), args.diff)
+    elif args.command == "test-summary":
+        result = engine.test_summary(Path.cwd())
     else:
         result = engine.run()
 

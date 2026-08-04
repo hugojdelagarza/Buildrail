@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -145,3 +146,58 @@ def test_review_delegates_to_the_pipeline_runner(
     assert len(captured_contexts) == 1
     assert captured_contexts[0].inputs == {"diff": str(diff_path.resolve())}
     assert captured_contexts[0].provider_name == "fake"
+
+
+def _completed(returncode: int, stdout: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        args=["pytest"], returncode=returncode, stdout=stdout, stderr=""
+    )
+
+
+def test_test_summary_returns_failure_result_when_config_missing(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.test_summary(tmp_path)
+
+    assert result.success is False
+    assert "No configuration file found" in result.message
+
+
+def test_test_summary_writes_artifact_when_tests_pass(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: _completed(0, "3 passed in 0.02s\n"))
+    engine = CoreEngine()
+
+    result = engine.test_summary(tmp_path)
+
+    assert result.success is True
+    assert "Test summary written to" in result.message
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    assert len(run_dirs) == 1
+    summary_files = list(run_dirs[0].glob("001-test-summary-*.md"))
+    assert len(summary_files) == 1
+    assert "All tests passed" in summary_files[0].read_text(encoding="utf-8")
+
+
+def test_test_summary_summarizes_failures_with_fake_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    stdout = "F\nshort test summary info\nFAILED tests/test_x.py::test_y - assert False\n1 failed\n"
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: _completed(1, stdout))
+    engine = CoreEngine()
+
+    result = engine.test_summary(tmp_path)
+
+    assert result.success is True
+    assert "fake" in result.message.lower()
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    content = list(run_dirs[0].glob("001-test-summary-*.md"))[0].read_text(encoding="utf-8")
+    assert "[fake response]" in content
+    assert "FAILED tests/test_x.py::test_y" in content

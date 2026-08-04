@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -120,3 +121,63 @@ def test_review_fails_without_traceback_when_diff_missing(
     assert exit_code == 1
     assert captured.err == ""
     assert "No diff file found" in captured.out
+
+
+def test_test_summary_succeeds_when_tests_pass(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            args=["pytest"], returncode=0, stdout="2 passed in 0.01s\n", stderr=""
+        ),
+    )
+
+    exit_code = main(["test-summary"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Test summary written to" in captured.out
+
+
+def test_test_summary_succeeds_when_tests_fail(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            args=["pytest"],
+            returncode=1,
+            stdout="FAILED tests/test_x.py::test_y - boom\n1 failed\n",
+            stderr="",
+        ),
+    )
+
+    exit_code = main(["test-summary"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "fake" in captured.out.lower()
+
+
+def test_test_summary_fails_without_traceback_when_config_missing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["test-summary"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "No configuration file found" in captured.out

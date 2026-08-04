@@ -98,3 +98,45 @@ class CoreEngine:
             success=True,
             message=f"Review written to {step.artifacts[0].content_path}.{usage_note}",
         )
+
+    def test_summary(self, project_root: Path) -> Result:
+        """Run the test-summary pipeline and write its output as an artifact."""
+        try:
+            config = load_config(project_root)
+            provider = create_provider(config.provider, model=config.anthropic_model)
+        except (ConfigError, ProviderError) as exc:
+            return Result(success=False, message=str(exc))
+
+        gateway = ProviderGateway(provider)
+        store = ArtifactStore(project_root / config.artifact_root)
+        run_id = store.generate_run_id()
+
+        context = PipelineContext(
+            run_id=run_id,
+            workdir=str(project_root),
+            inputs={},
+            provider_name=config.provider,
+        )
+
+        result = PipelineRunner(gateway, store, steps=("test-summary",)).run(context)
+        if not result.success:
+            return Result(success=False, message=result.error or "The pipeline failed.")
+
+        step = result.steps[-1]
+        output = step.response.outputs.get("summary")
+        if output is None or not step.artifacts:
+            return Result(
+                success=False, message="The test-summary skill did not produce a summary."
+            )
+
+        usage_note = ""
+        if output.usage is not None and output.model_used is not None:
+            usage_note = (
+                f" Provider: {config.provider}/{output.model_used}, "
+                f"tokens: {output.usage.input_tokens} in / {output.usage.output_tokens} out."
+            )
+
+        return Result(
+            success=True,
+            message=f"Test summary written to {step.artifacts[0].content_path}.{usage_note}",
+        )
