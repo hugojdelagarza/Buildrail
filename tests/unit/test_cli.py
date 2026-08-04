@@ -192,6 +192,7 @@ def test_skill_list_prints_all_built_in_skills(capsys: pytest.CaptureFixture[str
     assert "review-diff" in captured.out
     assert "test-summary" in captured.out
     assert "release-notes" in captured.out
+    assert "verify-project" in captured.out
 
 
 def test_skill_inspect_prints_manifest_details(capsys: pytest.CaptureFixture[str]) -> None:
@@ -247,6 +248,62 @@ def test_release_notes_fails_without_traceback_when_config_missing(
     monkeypatch.chdir(tmp_path)
 
     exit_code = main(["release-notes"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "No configuration file found" in captured.out
+
+
+def test_verify_succeeds_when_all_checks_pass(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            args=["cmd"], returncode=0, stdout="", stderr=""
+        ),
+    )
+
+    exit_code = main(["verify"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "PASSED" in captured.out
+
+
+def test_verify_fails_with_nonzero_exit_when_a_check_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    def _fake_run(args: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "format" in args:
+            return subprocess.CompletedProcess(
+                args=list(args), returncode=1, stdout="", stderr="would reformat"
+            )
+        return subprocess.CompletedProcess(args=list(args), returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("subprocess.run", _fake_run)
+
+    exit_code = main(["verify"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "FAILED" in captured.out
+
+
+def test_verify_fails_without_traceback_when_config_missing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["verify"])
 
     captured = capsys.readouterr()
     assert exit_code == 1

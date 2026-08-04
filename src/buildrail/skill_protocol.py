@@ -42,6 +42,9 @@ class SkillOutput:
     artifact_type: str
     model_used: str | None = None
     usage: Usage | None = None
+    # Structured facts a caller needs without re-parsing `content` (e.g. verify-project's
+    # pass/fail summary for the CLI's exit code) — opaque to the Core Engine otherwise.
+    metadata: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)

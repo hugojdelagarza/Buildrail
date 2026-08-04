@@ -109,3 +109,33 @@ def test_run_resolves_steps_through_the_injected_registry_not_hardcoded_loading(
     assert resolved == ["review-diff"]
     assert result.success is True
     assert result.steps[0].response.outputs["review"].content == "stub"
+
+
+def test_run_executes_a_provider_free_skill_without_a_gateway(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    received: list[object] = []
+
+    class _StubRegistry:
+        def resolve(self, name: str):  # type: ignore[no-untyped-def]
+            def _run(request: object, gateway: object) -> SkillResponse:
+                received.append(gateway)
+                return SkillResponse(
+                    status="success",
+                    outputs={"report": SkillOutput(content="ok", artifact_type="report")},
+                )
+
+            return _run
+
+    runner = PipelineRunner(
+        None,
+        store,
+        steps=("verify-project",),
+        registry=_StubRegistry(),  # type: ignore[arg-type]
+    )
+    context = PipelineContext(run_id="20260804-000006-test", workdir=str(tmp_path), inputs={})
+
+    result = runner.run(context)
+
+    assert received == [None]
+    assert result.success is True
+    assert result.steps[0].response.outputs["report"].content == "ok"

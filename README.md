@@ -74,6 +74,25 @@ from the environment — never write it into `buildrail.toml` or any
 other tracked file. `.env` is git-ignored for this reason;
 `.env.example` documents the variable name only.
 
+### Local Verification (No Provider Needed)
+
+`buildrail verify` runs Buildrail's local Python quality gate — `ruff
+format --check`, `ruff check`, `mypy`, then `pytest -v`, stopping at the
+first failed check — and writes a `verification-report` artifact. It
+works in any valid Buildrail project with no provider configured, no
+`ANTHROPIC_API_KEY`, and no network access:
+
+```toml
+artifact_root = "artifacts"
+```
+
+```
+buildrail verify
+```
+
+Exits `0` when every check passes, nonzero otherwise — safe to use as a
+pre-commit or CI gate.
+
 ### Discovering Skills
 
 Built-in skills are discovered by the Skill Registry, not hardcoded.

@@ -286,3 +286,70 @@ def test_release_notes_returns_failure_when_not_a_git_repository(tmp_path: Path)
     result = engine.release_notes(tmp_path)
 
     assert result.success is False
+
+
+def test_verify_project_returns_failure_result_when_config_missing(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.verify_project(tmp_path)
+
+    assert result.success is False
+    assert "No configuration file found" in result.message
+
+
+def test_verify_project_succeeds_when_all_checks_pass(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: _completed(0, "ok\n"))
+    engine = CoreEngine()
+
+    result = engine.verify_project(tmp_path)
+
+    assert result.success is True
+    assert "PASSED" in result.message
+    assert "4/4 checks passed" in result.message
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    assert len(run_dirs) == 1
+    report_files = list(run_dirs[0].glob("001-verification-report-*.md"))
+    assert len(report_files) == 1
+
+
+def test_verify_project_fails_when_a_check_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+
+    def _fake_run(args: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "mypy" in args:
+            return _completed(1, "error: bad type")
+        return _completed(0, "")
+
+    monkeypatch.setattr("subprocess.run", _fake_run)
+    engine = CoreEngine()
+
+    result = engine.verify_project(tmp_path)
+
+    assert result.success is False
+    assert "FAILED" in result.message
+    assert "mypy" in result.message
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    report_files = list(run_dirs[0].glob("001-verification-report-*.md"))
+    assert len(report_files) == 1
+
+
+def test_verify_project_never_constructs_a_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: _completed(0, ""))
+
+    def _fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("create_provider must not be called for verify-project")
+
+    monkeypatch.setattr("buildrail.core.engine.create_provider", _fail_if_called)
+    engine = CoreEngine()
+
+    result = engine.verify_project(tmp_path)
+
+    assert result.success is True

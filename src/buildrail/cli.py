@@ -37,6 +37,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--to", dest="to_ref", default=None, help="Commit or tag to end at (inclusive)."
     )
 
+    subparsers.add_parser(
+        "verify", help="Run local format/lint/type/test checks and write a verification report."
+    )
+
     skill_parser = subparsers.add_parser("skill", help="Discover and inspect built-in skills.")
     skill_subparsers = skill_parser.add_subparsers(dest="skill_command", required=True)
     skill_subparsers.add_parser("list", help="List discovered skills.")
@@ -62,6 +66,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = engine.test_summary(Path.cwd())
     elif args.command == "release-notes":
         result = engine.release_notes(Path.cwd(), from_ref=args.from_ref, to_ref=args.to_ref)
+    elif args.command == "verify":
+        result = engine.verify_project(Path.cwd())
     elif args.command == "skill":
         if args.skill_command == "list":
             result = engine.list_skills()

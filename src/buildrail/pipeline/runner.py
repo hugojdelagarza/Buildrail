@@ -4,7 +4,9 @@ Milestone-1 scope (docs/roadmap.md): exactly one built-in pipeline
 (review-diff alone). No pipeline discovery, no YAML-defined pipelines, no
 parallel execution, no branching, no retries, no scheduling — those are
 later-phase concerns. A skill never knows whether it's running alone or as
-one step of several; it only ever sees a SkillRequest and a ProviderGateway.
+one step of several; it only ever sees a SkillRequest and a ProviderGateway
+(or None, for provider-free skills like verify-project, which never
+construct or call one).
 """
 
 from buildrail.artifacts import ArtifactReference, ArtifactStore
@@ -21,7 +23,7 @@ class PipelineRunner:
 
     def __init__(
         self,
-        gateway: ProviderGateway,
+        gateway: ProviderGateway | None,
         store: ArtifactStore,
         *,
         steps: tuple[str, ...] = _DEFAULT_STEPS,

@@ -27,7 +27,7 @@ from buildrail.skills.errors import (
     SkillNotFoundError,
 )
 
-SkillRunner = Callable[[SkillRequest, ProviderGateway], SkillResponse]
+SkillRunner = Callable[[SkillRequest, ProviderGateway | None], SkillResponse]
 
 _MANIFEST_FILENAME = "skill.yaml"
 _SUPPORTED_PROTOCOL_VERSIONS = frozenset({"1.0"})

@@ -35,11 +35,12 @@ def test_load_config_raises_on_malformed_toml(tmp_path: Path) -> None:
         load_config(tmp_path)
 
 
-def test_load_config_raises_when_provider_missing(tmp_path: Path) -> None:
+def test_load_config_accepts_missing_provider(tmp_path: Path) -> None:
     _write_config(tmp_path, 'artifact_root = "artifacts"\n')
 
-    with pytest.raises(ConfigValidationError, match="provider"):
-        load_config(tmp_path)
+    config = load_config(tmp_path)
+
+    assert config.provider is None
 
 
 def test_load_config_raises_when_artifact_root_missing(tmp_path: Path) -> None:

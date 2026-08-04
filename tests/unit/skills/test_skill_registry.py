@@ -41,7 +41,12 @@ def test_default_registry_discovers_all_built_in_skills() -> None:
 
     manifests = registry.list_skills()
 
-    assert [m.name for m in manifests] == ["release-notes", "review-diff", "test-summary"]
+    assert [m.name for m in manifests] == [
+        "release-notes",
+        "review-diff",
+        "test-summary",
+        "verify-project",
+    ]
 
 
 def test_list_skills_is_deterministic() -> None:
@@ -86,6 +91,16 @@ def test_get_manifest_returns_validated_fields_for_release_notes() -> None:
     assert manifest.requires_provider is True
 
 
+def test_get_manifest_returns_validated_fields_for_verify_project() -> None:
+    registry = SkillRegistry()
+
+    manifest = registry.get_manifest("verify-project")
+
+    assert manifest.name == "verify-project"
+    assert manifest.protocol_version == "1.0"
+    assert manifest.requires_provider is False
+
+
 def test_resolve_review_diff_returns_a_callable_run_function() -> None:
     registry = SkillRegistry()
 
@@ -108,6 +123,14 @@ def test_resolve_release_notes_returns_a_callable_run_function() -> None:
     run_release_notes = registry.resolve("release-notes")
 
     assert callable(run_release_notes)
+
+
+def test_resolve_verify_project_returns_a_callable_run_function() -> None:
+    registry = SkillRegistry()
+
+    run_verify_project = registry.resolve("verify-project")
+
+    assert callable(run_verify_project)
 
 
 def test_get_manifest_raises_for_unknown_skill() -> None:

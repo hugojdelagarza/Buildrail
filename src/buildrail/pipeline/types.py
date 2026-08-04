@@ -13,7 +13,8 @@ class PipelineContext:
     run_id: str
     workdir: str
     inputs: dict[str, str]
-    provider_name: str
+    # None for provider-free skills (e.g. verify-project), which never construct a provider.
+    provider_name: str | None = None
 
 
 @dataclass(frozen=True)

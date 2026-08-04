@@ -1,0 +1,13 @@
+name: verify-project
+version: 0.1.0
+protocol_version: "1.0"
+description: Runs local format, lint, type, and test checks and writes a verification report.
+entrypoint: "python skill.py"
+
+inputs: []
+
+outputs:
+  - name: report
+    artifact_type: verification-report
+
+requires_provider: false

@@ -196,19 +196,23 @@ addressed before community skills are distributed for wide use, not
 before Milestone 1.
 
 **Milestone 1 implementation note:** built-in skills (`review-diff`,
-`test-summary`) run in-process (§1's phasing note), so there is no
-subprocess boundary yet for a loopback endpoint to cross.
-`SkillRequest`/`SkillResponse` live in `src/buildrail/skill_protocol.py`;
-the Provider Gateway is passed to the skill's `run()` function as a
-direct second argument instead of via `provider_endpoint`, and
-`SkillOutput.content` holds the produced text directly rather than a
-`content_ref` file pointer, since nothing is written to disk until the
-Core Engine persists it as an artifact. The Skill Registry
-(`src/buildrail/skills`) parses `entrypoint` only to locate the Python
-file to import in-process (the last whitespace-separated token, e.g.
-`skill.py` from `"python skill.py"`) — it does not yet spawn the
-command as a subprocess. All of this is additive to replace, not
-breaking, once a real subprocess transport is built.
+`test-summary`, `release-notes`, `verify-project`) run in-process (§1's
+phasing note), so there is no subprocess boundary yet for a loopback
+endpoint to cross. `SkillRequest`/`SkillResponse` live in
+`src/buildrail/skill_protocol.py`; the Provider Gateway is passed to the
+skill's `run()` function as a direct second argument instead of via
+`provider_endpoint`, and `SkillOutput.content` holds the produced text
+directly rather than a `content_ref` file pointer, since nothing is
+written to disk until the Core Engine persists it as an artifact. A
+skill declaring `requires_provider: false` (e.g. `verify-project`)
+receives `None` in that argument instead — the Pipeline Runner never
+constructs a provider for it, so such skills genuinely never touch
+`buildrail.providers`. The Skill Registry (`src/buildrail/skills`)
+parses `entrypoint` only to locate the Python file to import in-process
+(the last whitespace-separated token, e.g. `skill.py` from `"python
+skill.py"`) — it does not yet spawn the command as a subprocess. All of
+this is additive to replace, not breaking, once a real subprocess
+transport is built.
 
 ## 6. Execution Lifecycle
 

@@ -8,7 +8,7 @@ from typing import Any
 CONFIG_FILENAME = "buildrail.toml"
 
 _SUPPORTED_PROVIDERS = frozenset({"fake", "anthropic"})
-_REQUIRED_FIELDS = ("provider", "artifact_root")
+_REQUIRED_FIELDS = ("artifact_root",)
 
 
 class ConfigError(Exception):
@@ -31,8 +31,11 @@ class ConfigValidationError(ConfigError):
 class BuildrailConfig:
     """Buildrail's validated project-local configuration."""
 
-    provider: str
     artifact_root: str
+    # Optional: only commands/skills that actually call a provider (review,
+    # test-summary, release-notes) require this to be set; provider-free
+    # commands like `buildrail verify` work without it.
+    provider: str | None = None
     anthropic_model: str | None = None
 
 
@@ -56,15 +59,18 @@ def _validate(raw: dict[str, Any]) -> BuildrailConfig:
         if field not in raw:
             raise ConfigValidationError(f"{CONFIG_FILENAME} is missing required field '{field}'.")
 
-    provider = raw["provider"]
-    if not isinstance(provider, str) or not provider:
-        raise ConfigValidationError(f"{CONFIG_FILENAME}: 'provider' must be a non-empty string.")
-    if provider not in _SUPPORTED_PROVIDERS:
-        supported = ", ".join(sorted(_SUPPORTED_PROVIDERS))
-        raise ConfigValidationError(
-            f"{CONFIG_FILENAME}: unsupported provider '{provider}'. "
-            f"Supported providers: {supported}."
-        )
+    provider = raw.get("provider")
+    if provider is not None:
+        if not isinstance(provider, str) or not provider:
+            raise ConfigValidationError(
+                f"{CONFIG_FILENAME}: 'provider' must be a non-empty string."
+            )
+        if provider not in _SUPPORTED_PROVIDERS:
+            supported = ", ".join(sorted(_SUPPORTED_PROVIDERS))
+            raise ConfigValidationError(
+                f"{CONFIG_FILENAME}: unsupported provider '{provider}'. "
+                f"Supported providers: {supported}."
+            )
 
     artifact_root = raw["artifact_root"]
     if not isinstance(artifact_root, str) or not artifact_root:
