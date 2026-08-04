@@ -142,6 +142,54 @@ class CoreEngine:
             message=f"Test summary written to {step.artifacts[0].content_path}.{usage_note}",
         )
 
+    def release_notes(
+        self, project_root: Path, *, from_ref: str | None = None, to_ref: str | None = None
+    ) -> Result:
+        """Run the release-notes pipeline on the project's Git history and write an artifact."""
+        try:
+            config = load_config(project_root)
+            provider = create_provider(config.provider, model=config.anthropic_model)
+        except (ConfigError, ProviderError) as exc:
+            return Result(success=False, message=str(exc))
+
+        gateway = ProviderGateway(provider)
+        store = ArtifactStore(project_root / config.artifact_root)
+        run_id = store.generate_run_id()
+
+        inputs: dict[str, str] = {}
+        if from_ref:
+            inputs["from"] = from_ref
+        if to_ref:
+            inputs["to"] = to_ref
+
+        context = PipelineContext(
+            run_id=run_id,
+            workdir=str(project_root),
+            inputs=inputs,
+            provider_name=config.provider,
+        )
+
+        result = PipelineRunner(gateway, store, steps=("release-notes",)).run(context)
+        if not result.success:
+            return Result(success=False, message=result.error or "The pipeline failed.")
+
+        step = result.steps[-1]
+        output = step.response.outputs.get("notes")
+        if output is None or not step.artifacts:
+            return Result(success=False, message="The release-notes skill did not produce notes.")
+
+        usage_note = ""
+        if output.usage is not None and output.model_used is not None:
+            usage_note = (
+                f" Provider: {config.provider}/{output.model_used}, "
+                f"tokens: {output.usage.input_tokens} in / {output.usage.output_tokens} out."
+            )
+
+        return Result(
+            success=True,
+            message=f"Release notes written to {step.artifacts[0].content_path}.{usage_note}",
+        )
+
     def list_skills(self) -> Result:
         """List every discovered built-in skill's name, version, and description."""
         try:

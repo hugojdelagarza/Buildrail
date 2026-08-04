@@ -230,3 +230,59 @@ def test_inspect_skill_fails_without_traceback_for_unknown_skill() -> None:
 
     assert result.success is False
     assert "does-not-exist" in result.message
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+
+
+def _init_repo_with_commits(repo: Path) -> None:
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test User")
+    (repo / "a.txt").write_text("a\n", encoding="utf-8")
+    _git(repo, "add", "a.txt")
+    _git(repo, "commit", "-q", "-m", "chore: initial commit")
+    _git(repo, "tag", "v0.1.0")
+    (repo / "b.txt").write_text("b\n", encoding="utf-8")
+    _git(repo, "add", "b.txt")
+    _git(repo, "commit", "-q", "-m", "feat: add a feature")
+
+
+def test_release_notes_returns_failure_result_when_config_missing(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.release_notes(tmp_path)
+
+    assert result.success is False
+    assert "No configuration file found" in result.message
+
+
+def test_release_notes_writes_artifact_with_fake_provider(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    _init_repo_with_commits(tmp_path)
+    engine = CoreEngine()
+
+    result = engine.release_notes(tmp_path)
+
+    assert result.success is True
+    assert "Release notes written to" in result.message
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    assert len(run_dirs) == 1
+    notes_files = list(run_dirs[0].glob("001-release-notes-*.md"))
+    assert len(notes_files) == 1
+    content = notes_files[0].read_text(encoding="utf-8")
+    assert "add a feature" in content
+
+
+def test_release_notes_returns_failure_when_not_a_git_repository(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    engine = CoreEngine()
+
+    result = engine.release_notes(tmp_path)
+
+    assert result.success is False

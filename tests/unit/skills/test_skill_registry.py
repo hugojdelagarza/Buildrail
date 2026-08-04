@@ -36,12 +36,12 @@ def _write_skill(
         )
 
 
-def test_default_registry_discovers_both_built_in_skills() -> None:
+def test_default_registry_discovers_all_built_in_skills() -> None:
     registry = SkillRegistry()
 
     manifests = registry.list_skills()
 
-    assert [m.name for m in manifests] == ["review-diff", "test-summary"]
+    assert [m.name for m in manifests] == ["release-notes", "review-diff", "test-summary"]
 
 
 def test_list_skills_is_deterministic() -> None:
@@ -76,6 +76,16 @@ def test_get_manifest_returns_validated_fields_for_test_summary() -> None:
     assert manifest.requires_provider is True
 
 
+def test_get_manifest_returns_validated_fields_for_release_notes() -> None:
+    registry = SkillRegistry()
+
+    manifest = registry.get_manifest("release-notes")
+
+    assert manifest.name == "release-notes"
+    assert manifest.protocol_version == "1.0"
+    assert manifest.requires_provider is True
+
+
 def test_resolve_review_diff_returns_a_callable_run_function() -> None:
     registry = SkillRegistry()
 
@@ -90,6 +100,14 @@ def test_resolve_test_summary_returns_a_callable_run_function() -> None:
     run_test_summary = registry.resolve("test-summary")
 
     assert callable(run_test_summary)
+
+
+def test_resolve_release_notes_returns_a_callable_run_function() -> None:
+    registry = SkillRegistry()
+
+    run_release_notes = registry.resolve("release-notes")
+
+    assert callable(run_release_notes)
 
 
 def test_get_manifest_raises_for_unknown_skill() -> None:

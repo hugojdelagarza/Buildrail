@@ -1,0 +1,23 @@
+name: release-notes
+version: 0.1.0
+protocol_version: "1.0"
+description: Generates concise Markdown release notes from Git history.
+entrypoint: "python skill.py"
+
+inputs:
+  - name: from
+    type: string
+    required: false
+    description: Commit or tag to start the range from, exclusive. Defaults to the latest tag.
+  - name: to
+    type: string
+    required: false
+    description: Commit or tag to end the range at, inclusive. Defaults to HEAD.
+
+outputs:
+  - name: notes
+    artifact_type: release-notes
+
+requires_provider: true
+provider_capabilities_required:
+  - text-completion

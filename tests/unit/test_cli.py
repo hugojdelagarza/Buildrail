@@ -183,7 +183,7 @@ def test_test_summary_fails_without_traceback_when_config_missing(
     assert "No configuration file found" in captured.out
 
 
-def test_skill_list_prints_both_built_in_skills(capsys: pytest.CaptureFixture[str]) -> None:
+def test_skill_list_prints_all_built_in_skills(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = main(["skill", "list"])
 
     captured = capsys.readouterr()
@@ -191,6 +191,7 @@ def test_skill_list_prints_both_built_in_skills(capsys: pytest.CaptureFixture[st
     assert captured.err == ""
     assert "review-diff" in captured.out
     assert "test-summary" in captured.out
+    assert "release-notes" in captured.out
 
 
 def test_skill_inspect_prints_manifest_details(capsys: pytest.CaptureFixture[str]) -> None:
@@ -212,3 +213,42 @@ def test_skill_inspect_fails_without_traceback_for_unknown_skill(
     assert exit_code == 1
     assert captured.err == ""
     assert "does-not-exist" in captured.out
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+
+
+def test_release_notes_succeeds_with_commits(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test User")
+    (tmp_path / "a.txt").write_text("a\n", encoding="utf-8")
+    _git(tmp_path, "add", "a.txt")
+    _git(tmp_path, "commit", "-q", "-m", "feat: add a feature")
+
+    exit_code = main(["release-notes"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Release notes written to" in captured.out
+
+
+def test_release_notes_fails_without_traceback_when_config_missing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["release-notes"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "No configuration file found" in captured.out

@@ -27,6 +27,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("test-summary", help="Run the test suite and summarize any failures.")
 
+    release_notes_parser = subparsers.add_parser(
+        "release-notes", help="Generate release notes from Git history."
+    )
+    release_notes_parser.add_argument(
+        "--from", dest="from_ref", default=None, help="Commit or tag to start from (exclusive)."
+    )
+    release_notes_parser.add_argument(
+        "--to", dest="to_ref", default=None, help="Commit or tag to end at (inclusive)."
+    )
+
     skill_parser = subparsers.add_parser("skill", help="Discover and inspect built-in skills.")
     skill_subparsers = skill_parser.add_subparsers(dest="skill_command", required=True)
     skill_subparsers.add_parser("list", help="List discovered skills.")
@@ -50,6 +60,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = engine.review(Path.cwd(), args.diff)
     elif args.command == "test-summary":
         result = engine.test_summary(Path.cwd())
+    elif args.command == "release-notes":
+        result = engine.release_notes(Path.cwd(), from_ref=args.from_ref, to_ref=args.to_ref)
     elif args.command == "skill":
         if args.skill_command == "list":
             result = engine.list_skills()
