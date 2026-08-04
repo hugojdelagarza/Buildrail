@@ -47,6 +47,12 @@ def _build_parser() -> argparse.ArgumentParser:
     inspect_parser = skill_subparsers.add_parser("inspect", help="Show one skill's manifest.")
     inspect_parser.add_argument("name", help="The skill's name.")
 
+    hooks_parser = subparsers.add_parser("hooks", help="Manage the local Git pre-commit hook.")
+    hooks_subparsers = hooks_parser.add_subparsers(dest="hooks_command", required=True)
+    hooks_subparsers.add_parser("install", help="Install/update the pre-commit hook.")
+    hooks_subparsers.add_parser("uninstall", help="Remove the Buildrail-managed hook block.")
+    hooks_subparsers.add_parser("status", help="Show whether the hook is installed.")
+
     return parser
 
 
@@ -73,6 +79,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = engine.list_skills()
         else:
             result = engine.inspect_skill(args.name)
+    elif args.command == "hooks":
+        if args.hooks_command == "install":
+            result = engine.install_hook(Path.cwd())
+        elif args.hooks_command == "uninstall":
+            result = engine.uninstall_hook(Path.cwd())
+        else:
+            result = engine.hook_status(Path.cwd())
     else:
         result = engine.run()
 

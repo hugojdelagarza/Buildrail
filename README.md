@@ -93,6 +93,24 @@ buildrail verify
 Exits `0` when every check passes, nonzero otherwise — safe to use as a
 pre-commit or CI gate.
 
+### Git Pre-Commit Hook
+
+`buildrail hooks install` adds a local Git pre-commit hook that runs
+`buildrail verify` before each commit — a failed verification blocks the
+commit. It only ever touches the current repository (never global Git
+config), and preserves any pre-existing pre-commit hook content instead
+of overwriting it:
+
+```
+buildrail hooks install
+buildrail hooks status
+buildrail hooks uninstall
+```
+
+`uninstall` removes only Buildrail's managed block, leaving any
+unrelated hook content exactly as it was. This is a local pre-commit
+hook only — it does not add a pre-push hook or any CI workflow.
+
 ### Discovering Skills
 
 Built-in skills are discovered by the Skill Registry, not hardcoded.

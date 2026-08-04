@@ -353,3 +353,77 @@ def test_verify_project_never_constructs_a_provider(
     result = engine.verify_project(tmp_path)
 
     assert result.success is True
+
+
+def test_install_hook_delegates_to_hook_manager(tmp_path: Path) -> None:
+    _git(tmp_path, "init", "-q")
+    engine = CoreEngine()
+
+    result = engine.install_hook(tmp_path)
+
+    assert result.success is True
+    assert "Installed" in result.message
+    assert (tmp_path / ".git" / "hooks" / "pre-commit").is_file()
+
+
+def test_install_hook_reports_not_a_git_repository_without_traceback(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.install_hook(tmp_path)
+
+    assert result.success is False
+    assert "Git repository" in result.message
+
+
+def test_uninstall_hook_delegates_to_hook_manager(tmp_path: Path) -> None:
+    _git(tmp_path, "init", "-q")
+    engine = CoreEngine()
+    engine.install_hook(tmp_path)
+
+    result = engine.uninstall_hook(tmp_path)
+
+    assert result.success is True
+    assert "Removed" in result.message
+    assert not (tmp_path / ".git" / "hooks" / "pre-commit").is_file()
+
+
+def test_hook_status_reports_not_installed(tmp_path: Path) -> None:
+    _git(tmp_path, "init", "-q")
+    engine = CoreEngine()
+
+    result = engine.hook_status(tmp_path)
+
+    assert result.success is True
+    assert "Not installed" in result.message
+
+
+def test_hook_status_reports_installed(tmp_path: Path) -> None:
+    _git(tmp_path, "init", "-q")
+    engine = CoreEngine()
+    engine.install_hook(tmp_path)
+
+    result = engine.hook_status(tmp_path)
+
+    assert result.success is True
+    assert "Installed" in result.message
+
+
+def test_hook_status_reports_malformed_block_as_failure(tmp_path: Path) -> None:
+    _git(tmp_path, "init", "-q")
+    hook_path = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook_path.parent.mkdir(parents=True, exist_ok=True)
+    hook_path.write_text(
+        "#!/bin/sh\n"
+        "# BEGIN BUILDRAIL MANAGED BLOCK\n"
+        "echo one\n"
+        "# BEGIN BUILDRAIL MANAGED BLOCK\n"
+        "echo two\n"
+        "# END BUILDRAIL MANAGED BLOCK\n",
+        encoding="utf-8",
+    )
+    engine = CoreEngine()
+
+    result = engine.hook_status(tmp_path)
+
+    assert result.success is False
+    assert "Duplicate" in result.message

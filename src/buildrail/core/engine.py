@@ -5,6 +5,10 @@ from pathlib import Path
 
 from buildrail.artifacts import ArtifactStore
 from buildrail.config import BuildrailConfig, ConfigError, load_config
+from buildrail.hooks import HookError
+from buildrail.hooks import install as install_hook_file
+from buildrail.hooks import status as hook_status_file
+from buildrail.hooks import uninstall as uninstall_hook_file
 from buildrail.pipeline import PipelineContext, PipelineRunner
 from buildrail.providers import (
     Message,
@@ -279,3 +283,45 @@ class CoreEngine:
             f"path: {manifest.path}",
         ]
         return Result(success=True, message="\n".join(lines))
+
+    def install_hook(self, project_root: Path) -> Result:
+        """Install or update the Buildrail-managed Git pre-commit hook."""
+        try:
+            result = install_hook_file(project_root)
+        except HookError as exc:
+            return Result(success=False, message=str(exc))
+
+        messages = {
+            "installed": f"Installed pre-commit hook at {result.hook_path}.",
+            "updated": f"Updated pre-commit hook at {result.hook_path}.",
+            "already_installed": f"Pre-commit hook already installed at {result.hook_path}.",
+        }
+        return Result(success=True, message=messages[result.action])
+
+    def uninstall_hook(self, project_root: Path) -> Result:
+        """Remove the Buildrail-managed block from the Git pre-commit hook."""
+        try:
+            result = uninstall_hook_file(project_root)
+        except HookError as exc:
+            return Result(success=False, message=str(exc))
+
+        messages = {
+            "removed_file": f"Removed pre-commit hook at {result.hook_path}.",
+            "removed_block": (
+                f"Removed Buildrail's block from {result.hook_path}; "
+                "existing hook content preserved."
+            ),
+            "not_installed": f"Buildrail is not installed at {result.hook_path}.",
+        }
+        return Result(success=True, message=messages[result.action])
+
+    def hook_status(self, project_root: Path) -> Result:
+        """Report whether the Buildrail-managed Git pre-commit hook is installed."""
+        try:
+            result = hook_status_file(project_root)
+        except HookError as exc:
+            return Result(success=False, message=str(exc))
+
+        if result.state == "installed":
+            return Result(success=True, message=f"Installed at {result.hook_path}.")
+        return Result(success=True, message=f"Not installed. Hook path: {result.hook_path}.")

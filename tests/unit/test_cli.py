@@ -309,3 +309,59 @@ def test_verify_fails_without_traceback_when_config_missing(
     assert exit_code == 1
     assert captured.err == ""
     assert "No configuration file found" in captured.out
+
+
+def test_hooks_install_succeeds_in_a_git_repository(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _git(tmp_path, "init", "-q")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["hooks", "install"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Installed" in captured.out
+
+
+def test_hooks_install_fails_without_traceback_outside_a_git_repository(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["hooks", "install"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "Git repository" in captured.out
+
+
+def test_hooks_status_reports_not_installed(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _git(tmp_path, "init", "-q")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["hooks", "status"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Not installed" in captured.out
+
+
+def test_hooks_uninstall_after_install_succeeds(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _git(tmp_path, "init", "-q")
+    monkeypatch.chdir(tmp_path)
+    main(["hooks", "install"])
+
+    exit_code = main(["hooks", "uninstall"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Removed" in captured.out
