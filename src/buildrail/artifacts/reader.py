@@ -72,6 +72,7 @@ class ArtifactDetail:
     checksum: str | None
     content_type: str | None
     pipeline: str | None = None
+    display_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -206,6 +207,10 @@ class ArtifactReader:
         if pipeline is not None and not isinstance(pipeline, str):
             raise MalformedMetadataError(f"{metadata_path}: 'pipeline' must be a string.")
 
+        display_name = metadata.get("display_name")
+        if display_name is not None and not isinstance(display_name, str):
+            raise MalformedMetadataError(f"{metadata_path}: 'display_name' must be a string.")
+
         content_ref = _require_str(metadata, "content_ref", metadata_path)
 
         return ArtifactDetail(
@@ -218,6 +223,7 @@ class ArtifactReader:
             produced_by_version=(produced_by or {}).get("version"),
             provider_usage=provider_usage,
             pipeline=pipeline,
+            display_name=display_name,
             created_at=metadata.get("created_at"),
             checksum=metadata.get("checksum"),
             content_type=metadata.get("content_type"),

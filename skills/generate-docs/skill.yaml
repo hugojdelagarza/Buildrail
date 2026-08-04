@@ -1,0 +1,29 @@
+name: generate-docs
+version: 0.1.0
+protocol_version: "1.0"
+description: Generates deterministic Markdown documentation from a project's analysis.
+entrypoint: "python skill.py"
+
+inputs:
+  - name: repository_path
+    type: string
+    required: true
+    description: Path to the repository to document.
+  - name: analysis_json
+    type: file
+    required: false
+    description: Path to a pre-computed ProjectAnalysis JSON file, to avoid reanalyzing.
+  - name: enhance
+    type: string
+    required: false
+    description: "'true' to enrich each document with one bounded provider request."
+
+outputs:
+  - name: project_overview
+    artifact_type: documentation
+  - name: module_reference
+    artifact_type: documentation
+  - name: development_guide
+    artifact_type: documentation
+
+requires_provider: false

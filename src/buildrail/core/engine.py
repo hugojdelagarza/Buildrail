@@ -1,11 +1,13 @@
 """The Core Engine: Buildrail's single orchestration entry point."""
 
+import json
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from buildrail import vcs
+from buildrail.analysis import AnalysisError, ProjectAnalysis, analyze_project, to_dict
 from buildrail.artifacts import ArtifactReader, ArtifactReadError, ArtifactStore
 from buildrail.config import BuildrailConfig, ConfigError, load_config
 from buildrail.hooks import HookError
@@ -27,7 +29,10 @@ from buildrail.providers import (
     TextPart,
     create_provider,
 )
+from buildrail.skill_protocol import SkillResponse
 from buildrail.skills import SkillError, SkillRegistry
+
+_DOC_FILENAMES = ("project-overview.md", "module-reference.md", "development-guide.md")
 
 _MAX_PAYLOAD_DISPLAY_CHARS = 4000
 
@@ -97,12 +102,73 @@ def _write_temp_diff(diff_text: str) -> Path:
     return path
 
 
-def _build_pre_commit_message(
+def _write_temp_analysis(analysis: ProjectAnalysis) -> Path:
+    """Write a ProjectAnalysis to a private temp JSON file so pipeline steps can share it
+    without each one reanalyzing the repository."""
+    fd, path_str = tempfile.mkstemp(prefix="buildrail-analysis-", suffix=".json")
+    path = Path(path_str)
+    with open(fd, "w", encoding="utf-8") as handle:
+        json.dump(to_dict(analysis), handle)
+    return path
+
+
+def _resolve_repository_path(project_root: Path, path: str | None) -> Path:
+    """Resolve the repository to analyze: `path` if given, else `project_root`."""
+    if path is None:
+        return project_root
+    if "\x00" in path:
+        raise ValueError("Repository path contains a null byte.")
+    return Path(path)
+
+
+def _resolve_output_path(repo_root: Path, output: str) -> Path:
+    """Resolve a project-relative `--output` directory, refusing to escape `repo_root`."""
+    if "\x00" in output:
+        raise ValueError("Output path contains a null byte.")
+    resolved_root = repo_root.resolve()
+    candidate = (resolved_root / output).resolve()
+    if not candidate.is_relative_to(resolved_root):
+        raise ValueError(f"Output path '{output}' escapes the repository root.")
+    return candidate
+
+
+def _first_existing_doc_path(output_dir: Path) -> Path | None:
+    """Return the first of the three generated doc filenames that already exists, if any."""
+    for filename in _DOC_FILENAMES:
+        candidate = output_dir / filename
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _sum_usage(response: SkillResponse, provider_name: str | None) -> dict[str, object] | None:
+    """Sum token usage across every output a multi-document skill response produced."""
+    total_input = 0
+    total_output = 0
+    model_used: str | None = None
+    found = False
+    for output in response.outputs.values():
+        if output.usage is not None:
+            found = True
+            total_input += output.usage.input_tokens
+            total_output += output.usage.output_tokens
+            model_used = output.model_used or model_used
+    if not found:
+        return None
+    return {
+        "provider": provider_name,
+        "model": model_used,
+        "input_tokens": total_input,
+        "output_tokens": total_output,
+    }
+
+
+def _build_pipeline_message(
     result: NamedPipelineResult, provider_usage: dict[str, object] | None
 ) -> str:
     status_word = "PASSED" if result.success else "FAILED"
     lines = [
-        "Pipeline: pre-commit",
+        f"Pipeline: {result.name}",
         f"Status: {status_word}",
         f"Run: {result.run_id}",
     ]
@@ -498,6 +564,7 @@ class CoreEngine:
             f"produced_by: {produced_by}",
             f"run_id: {detail.run_id}",
             f"pipeline: {detail.pipeline or 'none'}",
+            f"display_name: {detail.display_name or 'none'}",
             f"created_at: {detail.created_at or 'unknown'}",
             f"checksum: {detail.checksum or 'unknown'}",
             f"provider_usage: {detail.provider_usage or 'none'}",
@@ -549,7 +616,9 @@ class CoreEngine:
             )
             outcomes.append(review_outcome)
 
-        return self._finish_pre_commit(store, run_id, outcomes, start, provider_usage)
+        return self._finish_named_pipeline(
+            "pre-commit", store, run_id, outcomes, start, provider_usage
+        )
 
     def _run_pre_commit_review(
         self,
@@ -633,18 +702,20 @@ class CoreEngine:
                 }
         return outcome, usage
 
-    def _finish_pre_commit(
+    def _finish_named_pipeline(
         self,
+        name: str,
         store: ArtifactStore,
         run_id: str,
         outcomes: list[NamedStepOutcome],
         start: float,
         provider_usage: dict[str, object] | None,
     ) -> Result:
+        """Aggregate a named pipeline's step outcomes into one Result and run.json summary."""
         success = all(o.status != "failed" for o in outcomes)
         duration = time.perf_counter() - start
         pipeline_result = NamedPipelineResult(
-            name="pre-commit",
+            name=name,
             run_id=run_id,
             success=success,
             steps=tuple(outcomes),
@@ -670,5 +741,229 @@ class CoreEngine:
 
         return Result(
             success=pipeline_result.success,
-            message=_build_pre_commit_message(pipeline_result, provider_usage),
+            message=_build_pipeline_message(pipeline_result, provider_usage),
+        )
+
+    def explain_project(self, project_root: Path, *, path: str | None = None) -> Result:
+        """Run explain-project: a deterministic architecture summary. No provider, no network."""
+        try:
+            config = load_config(project_root)
+        except ConfigError as exc:
+            return Result(success=False, message=str(exc))
+
+        try:
+            repo_root = _resolve_repository_path(project_root, path)
+        except ValueError as exc:
+            return Result(success=False, message=str(exc))
+
+        store = ArtifactStore(project_root / config.artifact_root)
+        run_id = store.generate_run_id()
+        context = PipelineContext(
+            run_id=run_id, workdir=str(project_root), inputs={"repository_path": str(repo_root)}
+        )
+        result = PipelineRunner(None, store, steps=("explain-project",)).run(context)
+        if not result.success:
+            return Result(success=False, message=result.error or "The pipeline failed.")
+
+        step = result.steps[-1]
+        if step.response.outputs.get("summary") is None or not step.artifacts:
+            return Result(
+                success=False, message="The explain-project skill did not produce a summary."
+            )
+
+        artifact_paths = ", ".join(str(a.content_path) for a in step.artifacts)
+        return Result(success=True, message=f"Architecture summary written to {artifact_paths}.")
+
+    def docs_generate(
+        self,
+        project_root: Path,
+        *,
+        path: str | None = None,
+        output: str | None = None,
+        enhance: bool = False,
+    ) -> Result:
+        """Run generate-docs: deterministic Markdown docs, optionally enhanced by a provider.
+
+        Without --enhance, no provider is ever constructed. With --output,
+        the same content is also written into the analyzed repository —
+        refusing outright if any of the three target files already exist.
+        """
+        try:
+            config = load_config(project_root)
+        except ConfigError as exc:
+            return Result(success=False, message=str(exc))
+
+        try:
+            repo_root = _resolve_repository_path(project_root, path)
+        except ValueError as exc:
+            return Result(success=False, message=str(exc))
+
+        output_dir: Path | None = None
+        if output is not None:
+            try:
+                output_dir = _resolve_output_path(repo_root, output)
+            except ValueError as exc:
+                return Result(success=False, message=str(exc))
+            collision = _first_existing_doc_path(output_dir)
+            if collision is not None:
+                return Result(
+                    success=False,
+                    message=(
+                        f"Refusing to overwrite existing file at {collision}. "
+                        "Remove it or choose a different --output."
+                    ),
+                )
+
+        gateway: ProviderGateway | None = None
+        if enhance:
+            try:
+                provider = create_provider(_require_provider(config), model=config.anthropic_model)
+            except (ConfigError, ProviderError) as exc:
+                return Result(success=False, message=str(exc))
+            gateway = ProviderGateway(provider)
+
+        store = ArtifactStore(project_root / config.artifact_root)
+        run_id = store.generate_run_id()
+        inputs = {"repository_path": str(repo_root)}
+        if enhance:
+            inputs["enhance"] = "true"
+        context = PipelineContext(
+            run_id=run_id,
+            workdir=str(project_root),
+            inputs=inputs,
+            provider_name=config.provider if enhance else None,
+        )
+        result = PipelineRunner(gateway, store, steps=("generate-docs",)).run(context)
+        if not result.success:
+            return Result(success=False, message=result.error or "The pipeline failed.")
+
+        step = result.steps[-1]
+        if not step.artifacts:
+            return Result(
+                success=False, message="The generate-docs skill did not produce any documents."
+            )
+
+        message = (
+            f"Documentation written to {', '.join(str(a.content_path) for a in step.artifacts)}."
+        )
+        if output_dir is not None:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            for output_name, skill_output in step.response.outputs.items():
+                target = output_dir / f"{output_name.replace('_', '-')}.md"
+                target.write_text(skill_output.content, encoding="utf-8")
+            message += f" Also written to {output_dir}."
+
+        return Result(success=True, message=message)
+
+    def diagram_generate(
+        self, project_root: Path, *, path: str | None = None, format: str = "mermaid"
+    ) -> Result:
+        """Run generate-diagram: deterministic Mermaid source. No provider, no network."""
+        try:
+            config = load_config(project_root)
+        except ConfigError as exc:
+            return Result(success=False, message=str(exc))
+
+        try:
+            repo_root = _resolve_repository_path(project_root, path)
+        except ValueError as exc:
+            return Result(success=False, message=str(exc))
+
+        store = ArtifactStore(project_root / config.artifact_root)
+        run_id = store.generate_run_id()
+        context = PipelineContext(
+            run_id=run_id,
+            workdir=str(project_root),
+            inputs={"repository_path": str(repo_root), "format": format},
+        )
+        result = PipelineRunner(None, store, steps=("generate-diagram",)).run(context)
+        if not result.success:
+            return Result(success=False, message=result.error or "The pipeline failed.")
+
+        step = result.steps[-1]
+        if not step.artifacts:
+            return Result(
+                success=False, message="The generate-diagram skill did not produce a diagram."
+            )
+
+        return Result(success=True, message=f"Diagram written to {step.artifacts[0].content_path}.")
+
+    def run_project_intelligence(
+        self, project_root: Path, *, path: str | None = None, enhance: bool = False
+    ) -> Result:
+        """Run explain-project, generate-docs, and generate-diagram sharing one run and
+        one ProjectAnalysis, computed once up front so no step reanalyzes the repository."""
+        start = time.perf_counter()
+        try:
+            config = load_config(project_root)
+        except ConfigError as exc:
+            return Result(success=False, message=str(exc))
+
+        try:
+            repo_root = _resolve_repository_path(project_root, path)
+        except ValueError as exc:
+            return Result(success=False, message=str(exc))
+
+        try:
+            analysis = analyze_project(repo_root)
+        except AnalysisError as exc:
+            return Result(success=False, message=str(exc))
+
+        gateway: ProviderGateway | None = None
+        if enhance:
+            try:
+                provider = create_provider(_require_provider(config), model=config.anthropic_model)
+            except (ConfigError, ProviderError) as exc:
+                return Result(success=False, message=str(exc))
+            gateway = ProviderGateway(provider)
+
+        store = ArtifactStore(project_root / config.artifact_root)
+        run_id = store.generate_run_id()
+        analysis_file = _write_temp_analysis(analysis)
+        outcomes: list[NamedStepOutcome] = []
+        provider_usage: dict[str, object] | None = None
+        try:
+            base_inputs = {"repository_path": str(repo_root), "analysis_json": str(analysis_file)}
+
+            explain_context = PipelineContext(
+                run_id=run_id,
+                workdir=str(project_root),
+                inputs=base_inputs,
+                pipeline_name="project-intelligence",
+            )
+            explain_result = PipelineRunner(None, store, steps=("explain-project",)).run(
+                explain_context
+            )
+            outcomes.append(_outcome_from_step(explain_result, "explain-project"))
+
+            docs_inputs = dict(base_inputs)
+            if enhance:
+                docs_inputs["enhance"] = "true"
+            docs_context = PipelineContext(
+                run_id=run_id,
+                workdir=str(project_root),
+                inputs=docs_inputs,
+                provider_name=config.provider if enhance else None,
+                pipeline_name="project-intelligence",
+            )
+            docs_result = PipelineRunner(gateway, store, steps=("generate-docs",)).run(docs_context)
+            outcomes.append(_outcome_from_step(docs_result, "generate-docs"))
+            if docs_result.success and docs_result.steps:
+                provider_usage = _sum_usage(docs_result.steps[-1].response, config.provider)
+
+            diagram_context = PipelineContext(
+                run_id=run_id,
+                workdir=str(project_root),
+                inputs=base_inputs,
+                pipeline_name="project-intelligence",
+            )
+            diagram_result = PipelineRunner(None, store, steps=("generate-diagram",)).run(
+                diagram_context
+            )
+            outcomes.append(_outcome_from_step(diagram_result, "generate-diagram"))
+        finally:
+            analysis_file.unlink(missing_ok=True)
+
+        return self._finish_named_pipeline(
+            "project-intelligence", store, run_id, outcomes, start, provider_usage
         )

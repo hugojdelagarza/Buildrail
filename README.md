@@ -111,6 +111,42 @@ branch's upstream if one is configured, otherwise `HEAD~1`. If there
 are no changes against the resolved base, review is skipped (no
 provider call) and the pipeline still reports success.
 
+### Project Intelligence
+
+Three commands share one deterministic, offline analyzer that inspects a
+Python repository with `ast` — no AI required to use any of them:
+
+```
+buildrail explain
+buildrail docs generate
+buildrail diagram generate
+```
+
+`explain` writes a Markdown architecture summary plus a machine-readable
+JSON sidecar (entry points, package/module map, CLI commands, classes,
+functions, imports, statistics, and warnings). `docs generate` writes
+`project-overview.md`, `module-reference.md`, and `development-guide.md`;
+add `--output <path>` to also write them into the project itself (it
+refuses to overwrite existing files) and `--enhance` to have the
+configured provider draft a short prose introduction for each document —
+every fact still comes from the deterministic analysis, never the model.
+`diagram generate` writes Mermaid diagram source only (no SVG/PNG
+rendering yet). All three accept `--path <repository>` (default: the
+current directory) and never make a network call unless `--enhance` is
+used.
+
+`buildrail run project-intelligence` runs all three together, analyzing
+the repository once and sharing that analysis, one run id, and one
+`run.json` across every step:
+
+```
+buildrail run project-intelligence
+buildrail run project-intelligence --enhance
+```
+
+Every artifact from any of these commands is browsable with the same
+`buildrail runs`/`buildrail artifacts` commands as the rest of Buildrail.
+
 ### Git Pre-Commit Hook
 
 `buildrail hooks install` adds a local Git pre-commit hook that runs
@@ -178,7 +214,8 @@ payload, checksum-verified before it's displayed.
 ```
 buildrail/
 ├── src/        # CLI, Core Engine, Provider Gateway, Skill Registry, Pipeline Runner, Artifact Store/Reader
-├── skills/     # reusable skill definitions (review-diff, test-summary, verify-project, release-notes)
+├── skills/     # reusable skill definitions (review-diff, test-summary, verify-project,
+│               #   release-notes, explain-project, generate-docs, generate-diagram)
 ├── plugins/    # optional cloud/integration plugins (later phase)
 ├── tests/      # test suite
 ├── artifacts/  # generated output (reviews, docs, test reports, etc.) — git-ignored

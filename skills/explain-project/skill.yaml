@@ -1,0 +1,23 @@
+name: explain-project
+version: 0.1.0
+protocol_version: "1.0"
+description: Deterministically analyzes a Python repository and summarizes its architecture.
+entrypoint: "python skill.py"
+
+inputs:
+  - name: repository_path
+    type: string
+    required: true
+    description: Path to the repository to analyze.
+  - name: analysis_json
+    type: file
+    required: false
+    description: Path to a pre-computed ProjectAnalysis JSON file, to avoid reanalyzing.
+
+outputs:
+  - name: summary
+    artifact_type: architecture-summary
+  - name: analysis
+    artifact_type: architecture-summary
+
+requires_provider: false

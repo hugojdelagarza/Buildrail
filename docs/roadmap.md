@@ -76,10 +76,20 @@ artifact.
   feature looks like end to end (as opposed to Milestone 1's minimal
   single-skill slice).
 
-## Phase 6 — Documentation Generation Feature — **Not started**
+## Phase 6 — Documentation Generation Feature — **Complete**
 
-- A pipeline that generates or updates docs for a module/project,
-  reusing the skill and provider infrastructure built for code review.
+- Three built-in skills (`explain-project`, `generate-docs`,
+  `generate-diagram`) share one deterministic, offline analyzer
+  (`buildrail.analysis`) that inspects a Python repository via `ast` —
+  no regex parsing, no execution of analyzed code.
+- `buildrail explain`, `buildrail docs generate`, and `buildrail diagram
+  generate` all work fully offline; `buildrail docs generate --enhance`
+  is the only one that optionally reuses the existing Provider Gateway,
+  making at most one bounded request per generated document and never
+  replacing a deterministic fact with model output.
+- The named pipeline `buildrail run project-intelligence` composes all
+  three, analyzing the repository once and sharing that analysis, one
+  run id, and one `run.json` across every step — no re-analysis per step.
 
 ## Phase 7 — Testing Workflows — **Not started**
 

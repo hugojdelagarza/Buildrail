@@ -520,3 +520,143 @@ def test_run_pre_commit_fails_without_traceback_outside_a_git_repository(
     assert exit_code == 1
     assert captured.err == ""
     assert "Git repository" in captured.out
+
+
+def _init_python_project(tmp_path: Path, *, with_provider: bool = False) -> None:
+    config = 'provider = "fake"\n' if with_provider else ""
+    (tmp_path / "buildrail.toml").write_text(
+        f'{config}artifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    (tmp_path / "main.py").write_text('"""Entry."""\n\n\ndef run():\n    pass\n', encoding="utf-8")
+
+
+def test_explain_writes_a_summary_and_prints_success(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["explain"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Architecture summary written to" in captured.out
+
+
+def test_explain_accepts_an_explicit_path(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    other_repo = tmp_path / "other"
+    other_repo.mkdir()
+    (other_repo / "main.py").write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["explain", "--path", str(other_repo)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+
+
+def test_docs_generate_succeeds_offline_by_default(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["docs", "generate"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Documentation written to" in captured.out
+
+
+def test_docs_generate_enhance_fails_without_traceback_when_provider_missing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path, with_provider=False)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["docs", "generate", "--enhance"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "No provider configured" in captured.out
+
+
+def test_docs_generate_output_collision_fails_without_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path)
+    generated = tmp_path / "docs" / "generated"
+    generated.mkdir(parents=True)
+    (generated / "project-overview.md").write_text("existing", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["docs", "generate", "--output", "docs/generated"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+
+
+def test_diagram_generate_succeeds_offline_by_default(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["diagram", "generate"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Diagram written to" in captured.out
+
+
+def test_diagram_generate_rejects_unsupported_formats(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["diagram", "generate", "--format", "svg"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+
+
+def test_run_project_intelligence_succeeds_and_shares_one_run(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["run", "project-intelligence"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Pipeline: project-intelligence" in captured.out
+    assert "explain-project: passed" in captured.out
+    assert "generate-docs: passed" in captured.out
+    assert "generate-diagram: passed" in captured.out
+
+
+def test_run_project_intelligence_enhance_uses_fake_provider(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path, with_provider=True)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["run", "project-intelligence", "--enhance"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Provider: fake/fake-model" in captured.out

@@ -80,6 +80,52 @@ def _build_parser() -> argparse.ArgumentParser:
     pre_commit_parser.add_argument(
         "--skip-review", action="store_true", help="Skip review-diff even if changes exist."
     )
+    project_intelligence_parser = run_subparsers.add_parser(
+        "project-intelligence",
+        help="Run explain-project, generate-docs, and generate-diagram on one shared analysis.",
+    )
+    project_intelligence_parser.add_argument(
+        "--path", dest="path", default=None, help="Repository to analyze (default: cwd)."
+    )
+    project_intelligence_parser.add_argument(
+        "--enhance",
+        action="store_true",
+        help="Enhance generated docs with the configured provider.",
+    )
+
+    explain_parser = subparsers.add_parser(
+        "explain", help="Deterministically summarize a repository's architecture."
+    )
+    explain_parser.add_argument(
+        "--path", dest="path", default=None, help="Repository to analyze (default: cwd)."
+    )
+
+    docs_parser = subparsers.add_parser("docs", help="Generate project documentation.")
+    docs_subparsers = docs_parser.add_subparsers(dest="docs_command", required=True)
+    docs_generate_parser = docs_subparsers.add_parser(
+        "generate", help="Generate deterministic Markdown documentation."
+    )
+    docs_generate_parser.add_argument(
+        "--path", dest="path", default=None, help="Repository to document (default: cwd)."
+    )
+    docs_generate_parser.add_argument(
+        "--output", dest="output", default=None, help="Also write the docs to this relative path."
+    )
+    docs_generate_parser.add_argument(
+        "--enhance", action="store_true", help="Enhance each document with the configured provider."
+    )
+
+    diagram_parser = subparsers.add_parser("diagram", help="Generate architecture diagrams.")
+    diagram_subparsers = diagram_parser.add_subparsers(dest="diagram_command", required=True)
+    diagram_generate_parser = diagram_subparsers.add_parser(
+        "generate", help="Generate deterministic Mermaid diagrams."
+    )
+    diagram_generate_parser.add_argument(
+        "--path", dest="path", default=None, help="Repository to diagram (default: cwd)."
+    )
+    diagram_generate_parser.add_argument(
+        "--format", dest="format", default="mermaid", help="Diagram format (only 'mermaid')."
+    )
 
     return parser
 
@@ -122,9 +168,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "artifacts":
         result = engine.inspect_artifact(Path.cwd(), args.artifact_id)
     elif args.command == "run":
-        result = engine.run_pre_commit(
-            Path.cwd(), base_ref=args.base_ref, skip_review=args.skip_review
+        if args.pipeline_name == "project-intelligence":
+            result = engine.run_project_intelligence(
+                Path.cwd(), path=args.path, enhance=args.enhance
+            )
+        else:
+            result = engine.run_pre_commit(
+                Path.cwd(), base_ref=args.base_ref, skip_review=args.skip_review
+            )
+    elif args.command == "explain":
+        result = engine.explain_project(Path.cwd(), path=args.path)
+    elif args.command == "docs":
+        result = engine.docs_generate(
+            Path.cwd(), path=args.path, output=args.output, enhance=args.enhance
         )
+    elif args.command == "diagram":
+        result = engine.diagram_generate(Path.cwd(), path=args.path, format=args.format)
     else:
         result = engine.run()
 

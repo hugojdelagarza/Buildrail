@@ -1,0 +1,25 @@
+name: generate-diagram
+version: 0.1.0
+protocol_version: "1.0"
+description: Generates deterministic Mermaid diagrams from a project's analysis.
+entrypoint: "python skill.py"
+
+inputs:
+  - name: repository_path
+    type: string
+    required: true
+    description: Path to the repository to diagram.
+  - name: analysis_json
+    type: file
+    required: false
+    description: Path to a pre-computed ProjectAnalysis JSON file, to avoid reanalyzing.
+  - name: format
+    type: string
+    required: false
+    description: "Diagram format. Only 'mermaid' is supported in this slice."
+
+outputs:
+  - name: diagrams
+    artifact_type: diagram
+
+requires_provider: false

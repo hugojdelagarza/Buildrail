@@ -40,6 +40,14 @@ class SkillOutput:
 
     content: str
     artifact_type: str
+    # Lets a skill emit a non-Markdown payload (e.g. explain-project's JSON
+    # ProjectAnalysis sidecar) — the Artifact Store picks the file extension
+    # from this, not from an artifact-type lookup table.
+    content_type: str = "text/markdown"
+    # A short, human-readable label distinguishing multiple same-artifact-type
+    # outputs from one skill (e.g. generate-docs' three documents) for a
+    # frontend list view, without parsing the artifact's filename/slug.
+    display_name: str | None = None
     model_used: str | None = None
     usage: Usage | None = None
     # Structured facts a caller needs without re-parsing `content` (e.g. verify-project's

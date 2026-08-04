@@ -88,11 +88,12 @@ class PipelineRunner:
                 context.run_id,
                 artifact_type=output.artifact_type,
                 content=output.content,
-                content_type="text/markdown",
+                content_type=output.content_type,
                 slug=output_name,
                 produced_by={"skill": skill_name, "version": "0.1.0"},
                 provider_usage=provider_usage,
                 pipeline=context.pipeline_name,
+                display_name=output.display_name,
             )
             references.append(reference)
         return tuple(references)

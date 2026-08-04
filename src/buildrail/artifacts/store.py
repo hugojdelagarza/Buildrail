@@ -49,6 +49,7 @@ class ArtifactStore:
         produced_by: dict[str, str],
         provider_usage: dict[str, object] | None = None,
         pipeline: str | None = None,
+        display_name: str | None = None,
     ) -> ArtifactReference:
         """Create the run directory if needed and atomically write one artifact into it."""
         run_dir = self._root / run_id
@@ -71,6 +72,7 @@ class ArtifactStore:
             "produced_by": produced_by,
             "run_id": run_id,
             "pipeline": pipeline,
+            "display_name": display_name,
             "step_index": 1,
             "created_at": self._clock.utcnow().isoformat(),
             "content_ref": content_path.name,
