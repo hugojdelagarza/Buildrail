@@ -5,6 +5,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from buildrail.core import CoreEngine
+from buildrail.service import DEFAULT_HOST, DEFAULT_PORT
+from buildrail.service import run as run_service
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -127,6 +129,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--format", dest="format", default="mermaid", help="Diagram format (only 'mermaid')."
     )
 
+    serve_parser = subparsers.add_parser(
+        "serve", help="Start Buildrail's local HTTP service (localhost only)."
+    )
+    serve_parser.add_argument(
+        "--host", dest="host", default=DEFAULT_HOST, help=f"Host to bind (default: {DEFAULT_HOST})."
+    )
+    serve_parser.add_argument(
+        "--port", dest="port", type=int, default=DEFAULT_PORT, help="Port to bind (default: 8787)."
+    )
+
     return parser
 
 
@@ -134,6 +146,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI and return a process exit code."""
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "serve":
+        return run_service(Path.cwd(), host=args.host, port=args.port)
+
     engine = CoreEngine()
 
     if args.command == "config":

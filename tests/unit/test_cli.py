@@ -660,3 +660,44 @@ def test_run_project_intelligence_enhance_uses_fake_provider(
     assert exit_code == 0
     assert captured.err == ""
     assert "Provider: fake/fake-model" in captured.out
+
+
+def test_serve_delegates_to_the_service_module_with_parsed_host_and_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[Path, str, int]] = []
+
+    def _fake_run(project_root: Path, *, host: str, port: int) -> int:
+        calls.append((project_root, host, port))
+        return 0
+
+    monkeypatch.setattr(cli_module, "run_service", _fake_run)
+
+    exit_code = main(["serve", "--host", "0.0.0.0", "--port", "9999"])
+
+    assert exit_code == 0
+    assert calls == [(Path.cwd(), "0.0.0.0", 9999)]
+
+
+def test_serve_uses_default_host_and_port_when_not_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+
+    def _fake_run(project_root: Path, *, host: str, port: int) -> int:
+        calls.append((host, port))
+        return 0
+
+    monkeypatch.setattr(cli_module, "run_service", _fake_run)
+
+    main(["serve"])
+
+    assert calls == [("127.0.0.1", 8787)]
+
+
+def test_serve_propagates_the_service_module_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli_module, "run_service", lambda project_root, *, host, port: 1)
+
+    exit_code = main(["serve"])
+
+    assert exit_code == 1
