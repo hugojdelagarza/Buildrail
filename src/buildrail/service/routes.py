@@ -12,6 +12,7 @@ commands already read via `ArtifactReader`.
 
 import importlib.metadata
 import json
+import platform
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -28,15 +29,39 @@ from buildrail.artifacts import (
     RunNotFoundError,
     RunSummary,
 )
-from buildrail.config import ConfigError, load_config
+from buildrail.config import BuildrailConfig, ConfigError, load_config
 from buildrail.core import CoreEngine, Result
+from buildrail.providers import ProviderError, create_provider
+from buildrail.service.descriptors import (
+    COMMANDS,
+    PIPELINES,
+    CommandArgument,
+    CommandDescriptor,
+    PipelineDescriptor,
+)
+from buildrail.skills import SkillError, SkillManifest, SkillRegistry
 
 JsonObject = dict[str, Any]
 JsonBody = JsonObject | None
 Response = tuple[int, JsonObject]
 
-_COMMANDS = frozenset(
-    {"explain", "docs", "diagram", "verify", "pre-commit", "project-intelligence"}
+_API_VERSION = "1"
+_COMMAND_NAMES = frozenset(command.id for command in COMMANDS)
+
+# Discovery routes below never require a loaded buildrail.toml — they describe
+# Buildrail itself (built-in skills, built-in pipelines, the service's own
+# version) or degrade gracefully when the project isn't configured yet, so a
+# frontend can still render a helpful screen instead of an opaque 500.
+_CONFIG_FREE_GET_ROUTES = frozenset(
+    {
+        ("health",),
+        ("version",),
+        ("commands",),
+        ("skills",),
+        ("pipelines",),
+        ("project",),
+        ("config",),
+    }
 )
 
 
@@ -46,8 +71,8 @@ def dispatch(method: str, raw_path: str, body: JsonBody, project_root: Path) -> 
     parts = [segment for segment in split.path.split("/") if segment != ""]
     query = parse_qs(split.query)
 
-    if method == "GET" and parts == ["health"]:
-        return _health()
+    if method == "GET" and tuple(parts) in _CONFIG_FREE_GET_ROUTES:
+        return _dispatch_config_free_get(tuple(parts), project_root)
 
     try:
         config = load_config(project_root)
@@ -71,6 +96,22 @@ def dispatch(method: str, raw_path: str, body: JsonBody, project_root: Path) -> 
         return _run_command(project_root, parts[1], body)
 
     return 404, {"error": f"No route for {method} {split.path}."}
+
+
+def _dispatch_config_free_get(parts: tuple[str, ...], project_root: Path) -> Response:
+    if parts == ("health",):
+        return _health()
+    if parts == ("version",):
+        return _version()
+    if parts == ("commands",):
+        return _list_commands()
+    if parts == ("skills",):
+        return _list_skills()
+    if parts == ("pipelines",):
+        return _list_pipelines()
+    if parts == ("project",):
+        return _project_summary(project_root)
+    return _config_summary(project_root)
 
 
 def _health() -> Response:
@@ -165,6 +206,7 @@ def _run_detail_dict(run: RunDetail) -> JsonObject:
             for step in run.pipeline_steps
         ],
         "artifacts": [_artifact_detail_dict(artifact) for artifact in run.artifacts],
+        "provider_usage_totals": run.provider_usage_totals,
     }
 
 
@@ -184,7 +226,7 @@ def _artifact_payload_dict(payload: ArtifactPayload) -> JsonObject:
 
 
 def _run_command(project_root: Path, name: str, body: JsonObject) -> Response:
-    if name not in _COMMANDS:
+    if name not in _COMMAND_NAMES:
         return 404, {"error": f"No command named '{name}'."}
     engine = CoreEngine()
     try:
@@ -235,3 +277,193 @@ def _optional_bool(body: JsonObject, key: str) -> bool:
     if not isinstance(value, bool):
         raise TypeError(f"'{key}' must be a boolean.")
     return value
+
+
+def _buildrail_version() -> str:
+    try:
+        return importlib.metadata.version("buildrail")
+    except importlib.metadata.PackageNotFoundError:
+        return "unknown"
+
+
+def _version() -> Response:
+    return 200, {
+        "buildrail_version": _buildrail_version(),
+        "api_version": _API_VERSION,
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+    }
+
+
+def _argument_dict(argument: CommandArgument) -> JsonObject:
+    return {
+        "name": argument.name,
+        "type": argument.type,
+        "required": argument.required,
+        "description": argument.description,
+    }
+
+
+def _command_dict(command: CommandDescriptor) -> JsonObject:
+    return {
+        "id": command.id,
+        "display_name": command.display_name,
+        "description": command.description,
+        "endpoint": command.endpoint,
+        "method": "POST",
+        "requires_provider": command.requires_provider,
+        "accepts_arguments": command.accepts_arguments,
+        "arguments": [_argument_dict(a) for a in command.arguments],
+        "artifact_types": list(command.artifact_types),
+        "category": command.category,
+    }
+
+
+def _list_commands() -> Response:
+    return 200, {"commands": [_command_dict(c) for c in COMMANDS]}
+
+
+def _pipeline_dict(pipeline: PipelineDescriptor) -> JsonObject:
+    return {
+        "name": pipeline.name,
+        "display_name": pipeline.display_name,
+        "description": pipeline.description,
+        "steps": [
+            {"name": step.name, "skippable": step.skippable, "skip_condition": step.skip_condition}
+            for step in pipeline.steps
+        ],
+        "requires_provider": pipeline.requires_provider,
+        "arguments": [_argument_dict(a) for a in pipeline.arguments],
+    }
+
+
+def _list_pipelines() -> Response:
+    return 200, {"pipelines": [_pipeline_dict(p) for p in PIPELINES]}
+
+
+def _skill_manifest_dict(manifest: SkillManifest) -> JsonObject:
+    return {
+        "name": manifest.name,
+        "version": manifest.version,
+        "protocol_version": manifest.protocol_version,
+        "description": manifest.description,
+        "requires_provider": manifest.requires_provider,
+        "inputs": [
+            {
+                "name": i.name,
+                "type": i.type,
+                "required": i.required,
+                "description": i.description,
+            }
+            for i in manifest.inputs
+        ],
+        "outputs": [{"name": o.name, "artifact_type": o.artifact_type} for o in manifest.outputs],
+    }
+
+
+def _list_skills() -> Response:
+    try:
+        manifests = SkillRegistry().list_skills()
+    except SkillError as exc:
+        return 500, {"error": str(exc)}
+    return 200, {"skills": [_skill_manifest_dict(m) for m in manifests]}
+
+
+def _provider_ready(config: BuildrailConfig) -> bool:
+    """Whether the configured provider can be constructed — never makes a network call.
+
+    Reuses the same `create_provider` factory CoreEngine already uses; for
+    "anthropic" this only checks that ANTHROPIC_API_KEY is set (the
+    adapter's constructor validates presence, it does not call the API).
+    """
+    if config.provider is None:
+        return False
+    try:
+        create_provider(config.provider, model=config.anthropic_model)
+    except ProviderError:
+        return False
+    return True
+
+
+def _latest_statistics(reader: ArtifactReader, runs: tuple[RunSummary, ...]) -> JsonObject | None:
+    """Return the newest architecture-summary run's `statistics` object, if any exists."""
+    for run in runs:
+        if "architecture-summary" not in run.artifact_types:
+            continue
+        try:
+            detail = reader.get_run(run.run_id)
+        except ArtifactReadError:
+            continue
+        for artifact in detail.artifacts:
+            if (
+                artifact.type != "architecture-summary"
+                or artifact.content_type != "application/json"
+            ):
+                continue
+            try:
+                payload = reader.get_artifact(artifact.id)
+                data = json.loads(payload.content)
+            except (ArtifactReadError, json.JSONDecodeError):
+                continue
+            statistics = data.get("statistics")
+            return statistics if isinstance(statistics, dict) else None
+    return None
+
+
+def _project_summary(project_root: Path) -> Response:
+    try:
+        config = load_config(project_root)
+    except ConfigError:
+        return 200, {
+            "service_version": _buildrail_version(),
+            "project_root": str(project_root),
+            "config_status": "missing",
+            "artifact_root": None,
+            "provider": None,
+            "provider_ready": False,
+            "skill_count": len(SkillRegistry().list_skills()),
+            "pipeline_count": len(PIPELINES),
+            "recent_run_count": 0,
+            "latest_run": None,
+            "statistics": None,
+        }
+
+    reader = ArtifactReader(project_root / config.artifact_root)
+    try:
+        runs = reader.list_runs(50)
+    except ArtifactReadError:
+        runs = ()
+
+    return 200, {
+        "service_version": _buildrail_version(),
+        "project_root": str(project_root),
+        "config_status": "ok",
+        "artifact_root": config.artifact_root,
+        "provider": config.provider,
+        "provider_ready": _provider_ready(config),
+        "skill_count": len(SkillRegistry().list_skills()),
+        "pipeline_count": len(PIPELINES),
+        "recent_run_count": len(runs),
+        "latest_run": _run_summary_dict(runs[0]) if runs else None,
+        "statistics": _latest_statistics(reader, runs),
+    }
+
+
+def _config_summary(project_root: Path) -> Response:
+    try:
+        config = load_config(project_root)
+    except ConfigError:
+        return 200, {
+            "configured": False,
+            "provider": None,
+            "anthropic_model": None,
+            "artifact_root": None,
+            "credential_available": False,
+        }
+    return 200, {
+        "configured": True,
+        "provider": config.provider,
+        "anthropic_model": config.anthropic_model,
+        "artifact_root": config.artifact_root,
+        "credential_available": _provider_ready(config),
+    }

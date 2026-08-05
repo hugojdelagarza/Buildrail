@@ -86,6 +86,7 @@ class RunDetail:
     pipeline: str | None = None
     pipeline_steps: tuple[PipelineStepSummary, ...] = ()
     duration_seconds: float | None = None
+    provider_usage_totals: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +155,7 @@ class ArtifactReader:
             pipeline=summary.pipeline,
             pipeline_steps=_pipeline_steps(manifest, manifest_path),
             duration_seconds=_optional_float(manifest, "duration_seconds", manifest_path),
+            provider_usage_totals=_optional_dict(manifest, "provider_usage_totals", manifest_path),
         )
 
     def get_artifact(self, artifact_id: str) -> ArtifactPayload:
@@ -313,6 +315,15 @@ def _optional_float(manifest: dict[str, Any], key: str, source: Path) -> float |
     if not isinstance(value, int | float):
         raise MalformedMetadataError(f"{source}: '{key}' must be a number.")
     return float(value)
+
+
+def _optional_dict(manifest: dict[str, Any], key: str, source: Path) -> dict[str, Any] | None:
+    value = manifest.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise MalformedMetadataError(f"{source}: '{key}' must be an object.")
+    return value
 
 
 def _created_at_from_run_id(run_id: str) -> str | None:

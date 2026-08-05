@@ -9,7 +9,13 @@ from buildrail.skills.errors import (
     SkillError,
     SkillNotFoundError,
 )
-from buildrail.skills.registry import DEFAULT_SKILLS_DIR, SkillManifest, SkillRegistry
+from buildrail.skills.registry import (
+    DEFAULT_SKILLS_DIR,
+    SkillManifest,
+    SkillManifestInput,
+    SkillManifestOutput,
+    SkillRegistry,
+)
 
 __all__ = [
     "DEFAULT_SKILLS_DIR",
@@ -20,6 +26,8 @@ __all__ = [
     "ManifestValidationError",
     "SkillError",
     "SkillManifest",
+    "SkillManifestInput",
+    "SkillManifestOutput",
     "SkillNotFoundError",
     "SkillRegistry",
 ]

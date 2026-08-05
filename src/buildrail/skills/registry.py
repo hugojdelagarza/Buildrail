@@ -38,6 +38,24 @@ DEFAULT_SKILLS_DIR = _REPO_ROOT / "skills"
 
 
 @dataclass(frozen=True)
+class SkillManifestInput:
+    """One declared input in a skill.yaml manifest's `inputs` list."""
+
+    name: str
+    type: str
+    required: bool
+    description: str
+
+
+@dataclass(frozen=True)
+class SkillManifestOutput:
+    """One declared output in a skill.yaml manifest's `outputs` list."""
+
+    name: str
+    artifact_type: str
+
+
+@dataclass(frozen=True)
 class SkillManifest:
     """The minimal validated subset of a skill.yaml manifest."""
 
@@ -48,6 +66,8 @@ class SkillManifest:
     entrypoint: str
     requires_provider: bool
     path: Path
+    inputs: tuple[SkillManifestInput, ...] = ()
+    outputs: tuple[SkillManifestOutput, ...] = ()
 
 
 class SkillRegistry:
@@ -175,7 +195,47 @@ def _validate(raw: dict[str, Any], manifest_path: Path) -> SkillManifest:
         entrypoint=entrypoint,
         requires_provider=requires_provider,
         path=manifest_path.parent,
+        inputs=_parse_inputs(inputs, manifest_path),
+        outputs=_parse_outputs(outputs, manifest_path),
     )
+
+
+def _parse_inputs(inputs: list[Any], manifest_path: Path) -> tuple[SkillManifestInput, ...]:
+    parsed = []
+    for entry in inputs:
+        if not isinstance(entry, dict):
+            raise ManifestValidationError(f"{manifest_path}: each input must be a mapping.")
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            raise ManifestValidationError(f"{manifest_path}: an input is missing 'name'.")
+        parsed.append(
+            SkillManifestInput(
+                name=name,
+                type=entry.get("type", "string")
+                if isinstance(entry.get("type"), str)
+                else "string",
+                required=bool(entry.get("required", False)),
+                description=entry.get("description", "")
+                if isinstance(entry.get("description"), str)
+                else "",
+            )
+        )
+    return tuple(parsed)
+
+
+def _parse_outputs(outputs: list[Any], manifest_path: Path) -> tuple[SkillManifestOutput, ...]:
+    parsed = []
+    for entry in outputs:
+        if not isinstance(entry, dict):
+            raise ManifestValidationError(f"{manifest_path}: each output must be a mapping.")
+        name = entry.get("name")
+        artifact_type = entry.get("artifact_type")
+        if not isinstance(name, str) or not name:
+            raise ManifestValidationError(f"{manifest_path}: an output is missing 'name'.")
+        if not isinstance(artifact_type, str) or not artifact_type:
+            raise ManifestValidationError(f"{manifest_path}: an output is missing 'artifact_type'.")
+        parsed.append(SkillManifestOutput(name=name, artifact_type=artifact_type))
+    return tuple(parsed)
 
 
 def _resolve_entrypoint_path(manifest: SkillManifest) -> Path:

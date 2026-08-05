@@ -185,6 +185,37 @@ def test_get_run_surfaces_pipeline_level_fields(tmp_path: Path) -> None:
     assert run.pipeline_steps[1].reason == "no changes"
 
 
+def test_get_run_surfaces_provider_usage_totals_when_present(tmp_path: Path) -> None:
+    run_id, _ = _write_review(tmp_path, timestamp=datetime(2026, 8, 3, tzinfo=UTC), suffix="abc123")
+    store = _store(tmp_path, timestamp=datetime(2026, 8, 3, tzinfo=UTC), suffix="abc123")
+    store.write_run_summary(
+        run_id,
+        pipeline="project-intelligence",
+        status="success",
+        steps=[],
+        duration_seconds=1.0,
+        provider_usage={"provider": "fake", "model": "fake-model", "input_tokens": 10},
+    )
+    reader = ArtifactReader(tmp_path)
+
+    run = reader.get_run(run_id)
+
+    assert run.provider_usage_totals == {
+        "provider": "fake",
+        "model": "fake-model",
+        "input_tokens": 10,
+    }
+
+
+def test_get_run_provider_usage_totals_is_none_when_absent(tmp_path: Path) -> None:
+    run_id, _ = _write_review(tmp_path, timestamp=datetime(2026, 8, 3, tzinfo=UTC), suffix="abc123")
+    reader = ArtifactReader(tmp_path)
+
+    run = reader.get_run(run_id)
+
+    assert run.provider_usage_totals is None
+
+
 def test_list_runs_prefers_explicit_status_over_derived_status(tmp_path: Path) -> None:
     run_id, _ = _write_review(tmp_path, timestamp=datetime(2026, 8, 3, tzinfo=UTC), suffix="abc123")
     store = _store(tmp_path, timestamp=datetime(2026, 8, 3, tzinfo=UTC), suffix="abc123")

@@ -108,3 +108,45 @@ def test_unknown_run_returns_404_over_real_http(running_server: str) -> None:
 
     assert status == 404
     assert "error" in body
+
+
+def test_discovery_endpoints_respond_over_real_http(running_server: str) -> None:
+    for path in ("/version", "/commands", "/skills", "/pipelines", "/project", "/config"):
+        status, _body = _request(f"{running_server}{path}")
+        assert status == 200, path
+
+
+def test_cors_allows_a_local_dev_origin(running_server: str) -> None:
+    request = urllib.request.Request(
+        f"{running_server}/health", headers={"Origin": "http://localhost:5173"}
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.headers.get("Access-Control-Allow-Origin") == "http://localhost:5173"
+
+
+def test_cors_rejects_a_remote_origin(running_server: str) -> None:
+    request = urllib.request.Request(
+        f"{running_server}/health", headers={"Origin": "https://evil.example.com"}
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.headers.get("Access-Control-Allow-Origin") is None
+
+
+def test_cors_preflight_options_request_succeeds(running_server: str) -> None:
+    request = urllib.request.Request(
+        f"{running_server}/commands/verify",
+        method="OPTIONS",
+        headers={"Origin": "http://127.0.0.1:5173"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.status == 204
+        assert response.headers.get("Access-Control-Allow-Origin") == "http://127.0.0.1:5173"
+        assert "POST" in (response.headers.get("Access-Control-Allow-Methods") or "")
+
+
+def test_no_response_ever_contains_a_credential_looking_value(running_server: str) -> None:
+    for path in ("/health", "/version", "/project", "/config", "/skills", "/pipelines"):
+        _status, body = _request(f"{running_server}{path}")
+        serialized = json.dumps(body)
+        assert "ANTHROPIC_API_KEY" not in serialized
+        assert "sk-ant" not in serialized

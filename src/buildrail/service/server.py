@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from buildrail.service.routes import JsonBody, dispatch
-from buildrail.service.transport import read_json_body, send_json_response
+from buildrail.service.transport import read_json_body, send_cors_preflight, send_json_response
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
@@ -46,6 +46,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length else b""
         self._handle(read_json_body(raw))
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        send_cors_preflight(self)
 
     def _handle(self, body: JsonBody) -> None:
         status, payload = dispatch(self.command, self.path, body, self.server.project_root)
