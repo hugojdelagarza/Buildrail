@@ -1,0 +1,68 @@
+.toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+
+.toggle button {
+  background: var(--color-bg);
+  border: none;
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  color: var(--color-text-muted);
+  border-right: 1px solid var(--color-border);
+}
+
+.toggle button:last-child {
+  border-right: none;
+}
+
+.toggle button.active {
+  background: var(--color-bg-inset);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.source {
+  background: var(--color-bg-inset);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  overflow-x: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diagramList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.diagram {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  overflow-x: auto;
+  background: var(--color-bg-raised);
+}
+
+.diagram :global(svg) {
+  max-width: 100%;
+  height: auto;
+}
+
+.error {
+  border: 1px solid var(--color-danger);
+  background: var(--color-danger-bg);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+
+.loading,
+.empty {
+  color: var(--color-text-muted);
+}

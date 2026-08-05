@@ -194,10 +194,35 @@ use `--limit <n>` to change that). `runs inspect` shows one run's
 artifacts; `artifacts inspect` shows one artifact's full metadata and
 payload, checksum-verified before it's displayed.
 
+### Local Dashboard (Frontend)
+
+`buildrail serve` starts a lightweight, localhost-only HTTP service
+(`http://127.0.0.1:8787` by default; no TLS, no authentication) that
+exposes the same `CoreEngine`/`ArtifactReader` functionality above as
+JSON endpoints, for the local React dashboard under `frontend/`:
+
+```
+buildrail serve
+
+cd frontend
+npm install
+npm run dev
+```
+
+The service must be running before the frontend can connect — it never
+starts one on your behalf. No data leaves the machine except an explicit
+provider call your own commands make (`FakeProvider` supports the whole
+dashboard fully offline, with no API key). The frontend is read-only for
+configuration and artifacts in this release — it can execute commands
+and pipelines, but it cannot edit `buildrail.toml` or modify any
+artifact. See [docs/frontend.md](docs/frontend.md) for the architecture
+boundary, API URL configuration, and current limitations.
+
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) — system design and module boundaries.
 - [docs/roadmap.md](docs/roadmap.md) — phased plan from design to working CLI.
+- [docs/frontend.md](docs/frontend.md) — the local dashboard: architecture boundary, dev setup, limitations.
 - [docs/milestone-1.md](docs/milestone-1.md) — the current milestone's scope.
 - [docs/artifacts.md](docs/artifacts.md) — the artifact model: lifecycle, storage, versioning.
 - [docs/skills.md](docs/skills.md) — the skill specification: manifest, execution model, protocol.
@@ -217,6 +242,7 @@ buildrail/
 ├── skills/     # reusable skill definitions (review-diff, test-summary, verify-project,
 │               #   release-notes, explain-project, generate-docs, generate-diagram)
 ├── plugins/    # optional cloud/integration plugins (later phase)
+├── frontend/   # local React/Vite dashboard — talks to `buildrail serve` over HTTP only
 ├── tests/      # test suite
 ├── artifacts/  # generated output (reviews, docs, test reports, etc.) — git-ignored
 └── docs/       # design and planning documents

@@ -1,0 +1,146 @@
+/* Buildrail's frontend design system: neutral, restrained, developer-tool
+   density. No gradients, no glassmorphism, one accent color. Light/dark via
+   `prefers-color-scheme`, overridable per-session with `data-theme` on
+   <html> (see ThemeToggle). */
+
+:root {
+  --color-bg: #ffffff;
+  --color-bg-raised: #f6f7f9;
+  --color-bg-inset: #eef0f3;
+  --color-border: #dfe3e8;
+  --color-text: #1a1d21;
+  --color-text-muted: #5b6270;
+  --color-text-faint: #8a919e;
+  --color-accent: #2f6feb;
+  --color-accent-text: #ffffff;
+  --color-success: #1a7f37;
+  --color-success-bg: #e7f6ec;
+  --color-danger: #cf222e;
+  --color-danger-bg: #fdedee;
+  --color-warning: #9a6700;
+  --color-warning-bg: #fff8e6;
+  --color-skipped: #57606a;
+  --color-skipped-bg: #eef0f3;
+
+  --font-sans: -apple-system, 'Segoe UI', system-ui, Roboto, Helvetica, Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius: 6px;
+  --sidebar-width: 200px;
+  --statusbar-height: 44px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0d1117;
+    --color-bg-raised: #151b23;
+    --color-bg-inset: #010409;
+    --color-border: #2d333b;
+    --color-text: #e6edf3;
+    --color-text-muted: #9198a1;
+    --color-text-faint: #6e7681;
+    --color-accent: #5b9dff;
+    --color-accent-text: #0d1117;
+    --color-success: #3fb950;
+    --color-success-bg: #0f2c1a;
+    --color-danger: #f85149;
+    --color-danger-bg: #2d1214;
+    --color-warning: #d29922;
+    --color-warning-bg: #2b2111;
+    --color-skipped: #9198a1;
+    --color-skipped-bg: #1c2128;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='light'] {
+  --color-bg: #ffffff;
+  --color-bg-raised: #f6f7f9;
+  --color-bg-inset: #eef0f3;
+  --color-border: #dfe3e8;
+  --color-text: #1a1d21;
+  --color-text-muted: #5b6270;
+  --color-text-faint: #8a919e;
+  --color-accent: #2f6feb;
+  --color-accent-text: #ffffff;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #0d1117;
+  --color-bg-raised: #151b23;
+  --color-bg-inset: #010409;
+  --color-border: #2d333b;
+  --color-text: #e6edf3;
+  --color-text-muted: #9198a1;
+  --color-text-faint: #6e7681;
+  --color-accent: #5b9dff;
+  --color-accent-text: #0d1117;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#root {
+  height: 100%;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
+}
+
+a {
+  color: var(--color-accent);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
