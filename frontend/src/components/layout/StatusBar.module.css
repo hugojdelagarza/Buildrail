@@ -3,65 +3,8 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 0 var(--space-4);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-bg);
-}
-
-.status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 13px;
-  color: var(--color-text-muted);
-  min-width: 0;
-}
-
-.dotChecking,
-.dotConnected,
-.dotOffline {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.dotConnected {
-  background: var(--color-success);
-}
-
-.dotOffline {
-  background: var(--color-danger);
-}
-
-.dotChecking {
-  background: var(--color-text-faint);
-  animation: status-checking 1.6s ease-in-out infinite;
-}
-
-.statusLabel {
-  font-weight: 600;
-}
-
-@keyframes status-checking {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.separator {
-  color: var(--color-text-faint);
-}
-
-.projectName {
-  font-family: var(--font-mono);
-  color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
