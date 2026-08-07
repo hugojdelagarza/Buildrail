@@ -5,6 +5,9 @@ import { mockApi } from '../test/mockApi'
 import { LAYOUT_RESET_EVENT } from '../hooks/useResizableWidth'
 import { SettingsPage } from './SettingsPage'
 
+const isTauriMock = vi.hoisted(() => vi.fn(() => false))
+vi.mock('@tauri-apps/api/core', () => ({ isTauri: isTauriMock }))
+
 const SETTINGS_MOCKS = {
   'GET /config': {
     body: {
@@ -43,6 +46,7 @@ const SETTINGS_MOCKS = {
 afterEach(() => {
   vi.unstubAllGlobals()
   localStorage.clear()
+  isTauriMock.mockReturnValue(false)
 })
 
 describe('SettingsPage', () => {
@@ -158,5 +162,23 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('button', { name: 'Layout reset' })).toBeInTheDocument()
 
     window.removeEventListener(LAYOUT_RESET_EVENT, listener)
+  })
+
+  it('does not show the desktop note in a plain browser', async () => {
+    mockApi(SETTINGS_MOCKS)
+
+    render(<SettingsPage />)
+
+    await screen.findByText('Keyboard Shortcuts')
+    expect(screen.queryByText(/Running as a desktop app/)).not.toBeInTheDocument()
+  })
+
+  it('shows a desktop note when running inside Tauri', async () => {
+    isTauriMock.mockReturnValue(true)
+    mockApi(SETTINGS_MOCKS)
+
+    render(<SettingsPage />)
+
+    expect(await screen.findByText(/Running as a desktop app/)).toBeInTheDocument()
   })
 })

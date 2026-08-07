@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { isTauri } from '@tauri-apps/api/core'
 import { api } from '../api/client'
 import { useAsync } from '../hooks/useAsync'
 import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
@@ -88,6 +89,13 @@ export function SettingsPage() {
         Configuration is read-only from the frontend in this release — edit{' '}
         <code>buildrail.toml</code> directly to change the provider or artifact root.
       </p>
+
+      {isTauri() && (
+        <p className={shared.pageSubtitle}>
+          Running as a desktop app. This shell connects to an independently started local{' '}
+          <code>buildrail serve</code> — it does not launch or manage that process for you.
+        </p>
+      )}
 
       <div className={shared.section}>
         <h2 className={shared.sectionTitle}>Layout</h2>

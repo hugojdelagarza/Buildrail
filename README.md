@@ -221,6 +221,24 @@ directly to a page — see [docs/frontend.md](docs/frontend.md) for the
 full shortcut list, layout customization, architecture boundary, API URL
 configuration, and current limitations.
 
+### Desktop Shell (Optional)
+
+The same frontend can also run as a native desktop window via a minimal
+Tauri 2 shell under `frontend/src-tauri/` — a display host only, with no
+Buildrail logic in Rust. Python is still Buildrail's runtime; Rust exists
+here solely to host the existing web UI natively. Requires a Rust toolchain
+([rustup](https://rustup.rs/)):
+
+```
+buildrail serve
+
+cd frontend
+npm run tauri:dev
+```
+
+See [docs/frontend.md](docs/frontend.md) for setup requirements and current
+desktop-specific limitations.
+
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) — system design and module boundaries.
@@ -246,8 +264,10 @@ buildrail/
 │               #   release-notes, explain-project, generate-docs, generate-diagram)
 ├── plugins/    # optional cloud/integration plugins (later phase)
 ├── frontend/   # local React/Vite dashboard — talks to `buildrail serve` over HTTP only
+│   └── src-tauri/  # optional minimal Tauri shell that hosts the same frontend natively
 ├── tests/      # test suite
 ├── artifacts/  # generated output (reviews, docs, test reports, etc.) — git-ignored
+├── examples/   # standalone reference material not part of the app (e.g. Claude Code status-line template)
 └── docs/       # design and planning documents
 ```
 

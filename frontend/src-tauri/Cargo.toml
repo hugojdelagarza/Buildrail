@@ -1,0 +1,29 @@
+[package]
+name = "buildrail-desktop"
+version = "0.1.0"
+description = "Minimal Tauri desktop shell that hosts Buildrail's existing React frontend. Contains no Buildrail business logic; Python remains the runtime."
+edition = "2021"
+rust-version = "1.77.2"
+publish = false
+
+[lib]
+# The library target is required by Tauri's mobile entry-point convention even
+# though this shell is desktop-only for now.
+name = "buildrail_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# No plugins (fs/shell/http/dialog) are added: the WebView's own `fetch` is
+# sufficient to reach the existing localhost Buildrail service, and adding a
+# plugin would only widen the capability surface unnecessarily.
+tauri = { version = "2", features = [] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
