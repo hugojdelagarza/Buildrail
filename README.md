@@ -215,8 +215,11 @@ provider call your own commands make (`FakeProvider` supports the whole
 dashboard fully offline, with no API key). The frontend is read-only for
 configuration and artifacts in this release — it can execute commands
 and pipelines, but it cannot edit `buildrail.toml` or modify any
-artifact. See [docs/frontend.md](docs/frontend.md) for the architecture
-boundary, API URL configuration, and current limitations.
+artifact. Press `Ctrl+K` (or `Ctrl+Shift+P`) for a searchable command
+palette covering every page and action, or `G` then a letter to jump
+directly to a page — see [docs/frontend.md](docs/frontend.md) for the
+full shortcut list, layout customization, architecture boundary, API URL
+configuration, and current limitations.
 
 ## Documentation
 

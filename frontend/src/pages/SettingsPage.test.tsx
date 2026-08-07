@@ -1,10 +1,48 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mockApi } from '../test/mockApi'
+import { LAYOUT_RESET_EVENT } from '../hooks/useResizableWidth'
 import { SettingsPage } from './SettingsPage'
+
+const SETTINGS_MOCKS = {
+  'GET /config': {
+    body: {
+      configured: true,
+      provider: 'fake',
+      anthropic_model: null,
+      artifact_root: 'artifacts',
+      credential_available: true,
+    },
+  },
+  'GET /project': {
+    body: {
+      service_version: '0.1.0',
+      project_root: '/home/dev/project',
+      config_status: 'ok',
+      artifact_root: 'artifacts',
+      provider: 'fake',
+      provider_ready: true,
+      skill_count: 7,
+      pipeline_count: 2,
+      recent_run_count: 0,
+      latest_run: null,
+      statistics: null,
+    },
+  },
+  'GET /version': {
+    body: {
+      buildrail_version: '0.1.0',
+      api_version: '1',
+      python_version: '3.12.10',
+      platform: 'Windows',
+    },
+  },
+}
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  localStorage.clear()
 })
 
 describe('SettingsPage', () => {
@@ -92,5 +130,33 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     expect(await screen.findByText('Missing')).toBeInTheDocument()
+  })
+
+  it('lists keyboard shortcuts', async () => {
+    mockApi(SETTINGS_MOCKS)
+
+    render(<SettingsPage />)
+
+    expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument()
+    expect(screen.getByText('Ctrl K')).toBeInTheDocument()
+    expect(screen.getAllByText('Open the command palette')).toHaveLength(2)
+    expect(screen.getByText('G then R')).toBeInTheDocument()
+  })
+
+  it('broadcasts a layout-reset event when Reset layout is clicked', async () => {
+    mockApi(SETTINGS_MOCKS)
+    const user = userEvent.setup()
+    const listener = vi.fn()
+    window.addEventListener(LAYOUT_RESET_EVENT, listener)
+
+    render(<SettingsPage />)
+    await screen.findByText('Keyboard Shortcuts')
+
+    await user.click(screen.getByRole('button', { name: 'Reset layout' }))
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Layout reset' })).toBeInTheDocument()
+
+    window.removeEventListener(LAYOUT_RESET_EVENT, listener)
   })
 })

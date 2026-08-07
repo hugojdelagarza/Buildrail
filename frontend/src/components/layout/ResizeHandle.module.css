@@ -1,0 +1,25 @@
+.handle {
+  flex-shrink: 0;
+  width: 6px;
+  margin: 0 -3px;
+  cursor: col-resize;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  touch-action: none;
+}
+
+.handle:hover,
+.handle:focus-visible {
+  background: var(--color-border);
+}
+
+.handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--color-border);
+}

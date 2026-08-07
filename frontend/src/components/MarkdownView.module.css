@@ -1,3 +1,44 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.toc {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-raised);
+  max-width: 420px;
+}
+
+.tocTitle {
+  margin: 0 0 var(--space-2);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+}
+
+.tocList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.tocItem a {
+  text-decoration: none;
+}
+
+.tocItem a:hover {
+  text-decoration: underline;
+}
+
 .markdown {
   line-height: 1.6;
   max-width: 860px;

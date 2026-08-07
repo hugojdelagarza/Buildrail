@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
 import type { ArtifactDetail, ProjectAnalysis, RunSummary } from '../api/types'
 import { useAsync } from '../hooks/useAsync'
+import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
 import { MarkdownView } from '../components/MarkdownView'
 import { MermaidView } from '../components/MermaidView'
 import shared from '../styles/shared.module.css'
@@ -52,6 +53,7 @@ async function findLatestProjectIntelligence(
 export function ProjectIntelligencePage() {
   const fetcher = useCallback((signal: AbortSignal) => findLatestProjectIntelligence(signal), [])
   const { data, error, loading, reload } = useAsync(fetcher, [])
+  useRegisterRefresh(reload)
   const [running, setRunning] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
 

@@ -3,13 +3,15 @@ import { Link } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
 import type { PipelineDescriptor } from '../api/types'
 import { useAsync } from '../hooks/useAsync'
+import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
 import { StatusBadge } from '../components/StatusBadge'
 import shared from '../styles/shared.module.css'
 import layout from '../styles/listDetail.module.css'
 
 export function PipelinesPage() {
   const fetchPipelines = useCallback((signal: AbortSignal) => api.pipelines(signal), [])
-  const { data, error, loading } = useAsync(fetchPipelines, [])
+  const { data, error, loading, reload } = useAsync(fetchPipelines, [])
+  useRegisterRefresh(reload)
   const [selected, setSelected] = useState<string | null>(null)
 
   if (loading) return <p className={shared.loadingState}>Loading pipelines…</p>

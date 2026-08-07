@@ -62,11 +62,48 @@ frontend.
 
 ## Supported Views
 
-Overview, Runs (list + detail), Artifacts (Markdown/Mermaid/JSON/plain-text
-viewer with a metadata panel), Skills, Pipelines (with execution forms for
-`pre-commit` and `project-intelligence`), Project Intelligence (renders the
-latest `architecture-summary` JSON artifact), and a read-only Settings page.
-See `README.md` for the command-by-command summary.
+Overview, Runs (list + detail, with client-side search/filter/sort), Artifacts
+(list with client-side search/filter/sort; a Markdown/Mermaid/JSON/plain-text
+viewer with a resizable metadata panel), Skills, Pipelines (with execution
+forms for `pre-commit` and `project-intelligence`), Project Intelligence
+(renders the latest `architecture-summary` JSON artifact), and a Settings page
+(read-only project/config info, a keyboard-shortcuts reference, and a
+reset-layout action). See `README.md` for the command-by-command summary.
+
+## Keyboard Shortcuts & Command Palette
+
+`Ctrl+K` or `Ctrl+Shift+P` opens a command palette (searchable, arrow keys to
+move, Enter to run, Escape to close, focus returns to whatever triggered it)
+listing every page plus every action `GET /commands` describes — the palette
+never hardcodes a command's behavior separately from that endpoint, it just
+calls `POST /commands/{id}` the same way the Overview and Pipelines pages do.
+Page navigation entries are the one thing kept local to the frontend, since
+routes aren't part of the backend's contract.
+
+`G` then a letter navigates (`O` Overview, `R` Runs, `A` Artifacts, `S`
+Skills, `P` Pipelines, `I` Project Intelligence, `,` Settings); plain `R`
+refreshes whatever the current page last loaded. Every shortcut is a no-op
+while focus is inside a text input, textarea, select, or contenteditable
+element, so they never interfere with typing. The full list is also always
+visible on the Settings page.
+
+Refreshing "the current page" works without a global data-fetching layer:
+each page registers its own `useAsync` `reload` with a small context
+(`useRegisterRefresh`/`useTriggerRefresh` in
+`src/hooks/useRefreshRegistry.tsx`), and the shortcut/palette action just
+calls whatever the mounted page most recently registered.
+
+## Layout
+
+The sidebar and the artifact-view metadata panel are resizable by dragging
+their edge, or via the keyboard when the divider is focused (arrow keys).
+Both widths persist to `localStorage` per browser profile
+(`src/hooks/useResizableWidth.ts`) and collapse to a stacked, full-width
+layout under the existing 720px narrow-window breakpoint, where they aren't
+resizable. Settings has a "Reset layout" action that broadcasts one event;
+every mounted resizable panel listens for it and reverts to its default width
+and clears its own stored value — there's no central layout registry to keep
+in sync.
 
 ## Data Reuse, Not Reimplementation
 
@@ -109,4 +146,11 @@ is deliberately out of scope for this milestone; see `docs/roadmap.md`.
   when it's absent rather than fabricating a value.
 - The Artifacts page scans the 20 most recent runs to build its list (no
   dedicated "all artifacts" backend endpoint exists); this is fine locally
-  but is not a paginated, indefinitely-scaling view.
+  but is not a paginated, indefinitely-scaling view. Search/filter/sort on
+  both the Runs and Artifacts pages operate entirely on that already-fetched
+  page of data — there's no backend search or indexing, so filters only see
+  what's already loaded.
+- The Runs page has no provider/model filter: `RunSummary` doesn't carry
+  that field (only per-artifact `provider_usage` does), and fetching every
+  run's detail just to populate a filter would defeat the point of the
+  lightweight `/runs` list.

@@ -2,13 +2,15 @@ import { useCallback } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAsync } from '../hooks/useAsync'
+import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
 import { StatusBadge } from '../components/StatusBadge'
 import shared from '../styles/shared.module.css'
 
 export function RunDetailPage() {
   const { runId = '' } = useParams<{ runId: string }>()
   const fetchRun = useCallback((signal: AbortSignal) => api.run(runId, signal), [runId])
-  const { data: run, error, loading } = useAsync(fetchRun, [runId])
+  const { data: run, error, loading, reload } = useAsync(fetchRun, [runId])
+  useRegisterRefresh(reload)
 
   if (loading) return <p className={shared.loadingState}>Loading run…</p>
   if (error || !run) return <p className={shared.errorState}>{error ?? 'Run not found.'}</p>

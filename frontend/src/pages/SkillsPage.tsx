@@ -2,12 +2,14 @@ import { useCallback, useState } from 'react'
 import { api } from '../api/client'
 import type { SkillManifest } from '../api/types'
 import { useAsync } from '../hooks/useAsync'
+import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
 import shared from '../styles/shared.module.css'
 import layout from '../styles/listDetail.module.css'
 
 export function SkillsPage() {
   const fetchSkills = useCallback((signal: AbortSignal) => api.skills(signal), [])
-  const { data, error, loading } = useAsync(fetchSkills, [])
+  const { data, error, loading, reload } = useAsync(fetchSkills, [])
+  useRegisterRefresh(reload)
   const [selected, setSelected] = useState<string | null>(null)
 
   if (loading) return <p className={shared.loadingState}>Loading skills…</p>

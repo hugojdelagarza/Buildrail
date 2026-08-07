@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
 import { useAsync } from '../hooks/useAsync'
+import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
 import { StatusBadge } from '../components/StatusBadge'
 import shared from '../styles/shared.module.css'
 
@@ -22,6 +23,7 @@ const ACTIONS: ActionDef[] = [
 export function OverviewPage() {
   const fetchProject = useCallback((signal: AbortSignal) => api.project(signal), [])
   const { data: project, error, loading, reload } = useAsync(fetchProject, [])
+  useRegisterRefresh(reload)
 
   const [runningAction, setRunningAction] = useState<string | null>(null)
   const [result, setResult] = useState<{
