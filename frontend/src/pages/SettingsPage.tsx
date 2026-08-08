@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import { useAsync } from '../hooks/useAsync'
 import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
 import { resetLayout } from '../hooks/useResizableWidth'
+import { ConfigForm } from '../components/ConfigForm'
 import shared from '../styles/shared.module.css'
 
 const FRONTEND_VERSION = '0.1.0'
@@ -34,6 +35,7 @@ export function SettingsPage() {
   const { data, error, loading, reload } = useAsync(fetchAll, [])
   useRegisterRefresh(reload)
   const [layoutReset, setLayoutReset] = useState(false)
+  const [editingConfig, setEditingConfig] = useState(false)
 
   if (loading) return <p className={shared.loadingState}>Loading settings…</p>
   if (error || !data) return <p className={shared.errorState}>{error}</p>
@@ -50,24 +52,11 @@ export function SettingsPage() {
     <div className={shared.page}>
       <div className={shared.pageHeader}>
         <h1 className={shared.pageTitle}>Settings</h1>
-        <p className={shared.pageSubtitle}>Read-only in this release.</p>
       </div>
 
       <div className={`${shared.card} ${shared.metaGrid}`}>
         <span className={shared.metaLabel}>Project root</span>
         <span className={shared.mono}>{project.project_root}</span>
-
-        <span className={shared.metaLabel}>Artifact root</span>
-        <span className={shared.mono}>{config.artifact_root ?? 'not configured'}</span>
-
-        <span className={shared.metaLabel}>Provider</span>
-        <span>{config.provider ?? 'not configured'}</span>
-
-        <span className={shared.metaLabel}>Model</span>
-        <span>{config.anthropic_model ?? 'default'}</span>
-
-        <span className={shared.metaLabel}>Credential</span>
-        <span>{config.credential_available ? 'Available' : 'Missing'}</span>
 
         <span className={shared.metaLabel}>Buildrail version</span>
         <span className={shared.mono}>{version.buildrail_version}</span>
@@ -85,17 +74,64 @@ export function SettingsPage() {
         <span className={shared.mono}>{FRONTEND_VERSION}</span>
       </div>
 
-      <p className={shared.pageSubtitle}>
-        Configuration is read-only from the frontend in this release — edit{' '}
-        <code>buildrail.toml</code> directly to change the provider or artifact root.
-      </p>
-
       {isTauri() && (
         <p className={shared.pageSubtitle}>
           Running as a desktop app. This shell connects to an independently started local{' '}
           <code>buildrail serve</code> — it does not launch or manage that process for you.
         </p>
       )}
+
+      <div className={shared.section}>
+        <h2 className={shared.sectionTitle}>Project Configuration</h2>
+        {!editingConfig ? (
+          <>
+            <div className={`${shared.card} ${shared.metaGrid}`}>
+              <span className={shared.metaLabel}>Provider</span>
+              <span>{config.provider ?? 'Not configured'}</span>
+
+              <span className={shared.metaLabel}>Artifact root</span>
+              <span className={shared.mono}>{config.artifact_root ?? 'Not configured'}</span>
+
+              {config.provider === 'anthropic' && (
+                <>
+                  <span className={shared.metaLabel}>Anthropic model</span>
+                  <span>{config.anthropic_model ?? 'Provider default'}</span>
+                </>
+              )}
+
+              <span className={shared.metaLabel}>Credential</span>
+              <span>{config.credential_available ? 'Available' : 'Missing'}</span>
+            </div>
+            <p className={shared.pageSubtitle}>
+              API credentials are read from the environment and are never stored in{' '}
+              <code>buildrail.toml</code>.
+            </p>
+            <div className={shared.buttonRow}>
+              <button
+                type="button"
+                className={shared.button}
+                onClick={() => setEditingConfig(true)}
+              >
+                Edit configuration
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className={shared.card}>
+            <ConfigForm
+              initialProvider={config.provider as 'fake' | 'anthropic' | null}
+              initialArtifactRoot={config.artifact_root}
+              initialAnthropicModel={config.anthropic_model}
+              submitLabel="Save configuration"
+              onCancel={() => setEditingConfig(false)}
+              onSaved={() => {
+                setEditingConfig(false)
+                reload()
+              }}
+            />
+          </div>
+        )}
+      </div>
 
       <div className={shared.section}>
         <h2 className={shared.sectionTitle}>Layout</h2>

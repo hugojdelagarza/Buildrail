@@ -34,7 +34,7 @@ describe('ArtifactsPage', () => {
 
     render(<ArtifactsPage />, { wrapper: MemoryRouter })
 
-    expect(await screen.findByText('No artifacts yet.')).toBeInTheDocument()
+    expect(await screen.findByText(/No artifacts yet/)).toBeInTheDocument()
   })
 
   it('lists artifacts from recent runs', async () => {

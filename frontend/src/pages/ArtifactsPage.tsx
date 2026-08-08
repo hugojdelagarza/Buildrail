@@ -209,7 +209,10 @@ export function ArtifactsPage() {
       )}
 
       {artifacts && artifacts.length === 0 && (
-        <p className={shared.emptyState}>No artifacts yet.</p>
+        <p className={shared.emptyState}>
+          No artifacts yet. Generated documentation, diagrams, reviews, and reports will appear
+          here.
+        </p>
       )}
 
       {artifacts && artifacts.length > 0 && filteredArtifacts.length === 0 && (

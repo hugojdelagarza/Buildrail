@@ -1,0 +1,55 @@
+.providerOptions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 480px;
+}
+
+.providerOption {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  cursor: pointer;
+}
+
+.providerOption:has(input:checked) {
+  border-color: var(--color-accent);
+  background: var(--color-bg-inset);
+}
+
+.providerOption input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.optionTitle {
+  font-weight: 600;
+  font-size: 13px;
+  display: block;
+}
+
+.optionDescription {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  margin: 2px 0 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  max-width: 360px;
+}
+
+.field input {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 13px;
+}

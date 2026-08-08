@@ -167,11 +167,22 @@ export interface ProjectStatistics {
 }
 
 export interface ConfigResponse {
+  status: 'ok' | 'missing' | 'invalid'
   configured: boolean
   provider: string | null
   anthropic_model: string | null
   artifact_root: string | null
   credential_available: boolean
+  error: string | null
+}
+
+// Only these three fields are ever accepted by PUT /config — never an API
+// key, never arbitrary TOML. Omitted fields keep their current value (or
+// Buildrail's offline-friendly defaults, if no config exists yet).
+export interface ConfigUpdateRequest {
+  provider?: 'fake' | 'anthropic'
+  artifact_root?: string
+  anthropic_model?: string
 }
 
 export interface CommandResult {

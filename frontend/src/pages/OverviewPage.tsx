@@ -1,9 +1,12 @@
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
+import type { ConfigResponse } from '../api/types'
 import { useAsync } from '../hooks/useAsync'
 import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
+import { ConfigForm } from '../components/ConfigForm'
 import { StatusBadge } from '../components/StatusBadge'
+import { projectNameFromRoot } from '../lib/projectName'
 import shared from '../styles/shared.module.css'
 
 interface ActionDef {
@@ -21,8 +24,11 @@ const ACTIONS: ActionDef[] = [
 ]
 
 export function OverviewPage() {
-  const fetchProject = useCallback((signal: AbortSignal) => api.project(signal), [])
-  const { data: project, error, loading, reload } = useAsync(fetchProject, [])
+  const fetchOverview = useCallback(async (signal: AbortSignal) => {
+    const [project, config] = await Promise.all([api.project(signal), api.config(signal)])
+    return { project, config }
+  }, [])
+  const { data, error, loading, reload } = useAsync(fetchOverview, [])
   useRegisterRefresh(reload)
 
   const [runningAction, setRunningAction] = useState<string | null>(null)
@@ -63,7 +69,7 @@ export function OverviewPage() {
     return <p className={shared.loadingState}>Connecting to the Buildrail service…</p>
   }
 
-  if (error || !project) {
+  if (error || !data) {
     return (
       <div className={shared.errorState}>
         <p>
@@ -74,12 +80,27 @@ export function OverviewPage() {
     )
   }
 
+  const { project, config } = data
+  const projectName = projectNameFromRoot(project.project_root)
+
+  if (config.status !== 'ok') {
+    return (
+      <div className={shared.page}>
+        <div className={shared.pageHeader}>
+          <h1 className={shared.pageTitle}>Overview</h1>
+          <p className={shared.pageSubtitle}>Project: {projectName}</p>
+        </div>
+        <OnboardingSetup config={config} onConfigured={reload} />
+      </div>
+    )
+  }
+
   return (
     <div className={shared.page}>
       <div className={shared.pageHeader}>
         <div>
           <h1 className={shared.pageTitle}>Overview</h1>
-          <p className={shared.pageSubtitle}>{project.project_root}</p>
+          <p className={shared.pageSubtitle}>Project: {projectName}</p>
         </div>
       </div>
 
@@ -147,6 +168,55 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className={shared.statCard}>
       <div className={shared.statLabel}>{label}</div>
       <div className={shared.statValue}>{value}</div>
+    </div>
+  )
+}
+
+/** The first-run experience: a restrained prompt that reveals the shared
+ * config form on demand, instead of showing `config.error` as the primary
+ * experience. `onConfigured` is the page's own `reload`, so saving
+ * transitions straight into the normal dashboard with no page refresh. */
+function OnboardingSetup({
+  config,
+  onConfigured,
+}: {
+  config: ConfigResponse
+  onConfigured: () => void
+}) {
+  const [showForm, setShowForm] = useState(false)
+
+  if (!showForm) {
+    return (
+      <div className={shared.emptyState}>
+        <p>
+          <strong>Buildrail isn&apos;t configured for this project yet.</strong>
+        </p>
+        <p>
+          Create a local configuration to start using project analysis, verification, pipelines, and
+          artifacts.
+        </p>
+        {config.status === 'invalid' && config.error && (
+          <p className={shared.errorState}>{config.error}</p>
+        )}
+        <div className={shared.buttonRow} style={{ justifyContent: 'center' }}>
+          <button type="button" className={shared.buttonPrimary} onClick={() => setShowForm(true)}>
+            Set up Buildrail
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={shared.card}>
+      <ConfigForm
+        initialProvider={config.provider as 'fake' | 'anthropic' | null}
+        initialArtifactRoot={config.artifact_root}
+        initialAnthropicModel={config.anthropic_model}
+        submitLabel="Set up Buildrail"
+        onCancel={() => setShowForm(false)}
+        onSaved={onConfigured}
+      />
     </div>
   )
 }

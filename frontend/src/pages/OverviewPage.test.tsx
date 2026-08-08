@@ -30,9 +30,39 @@ const PROJECT_BODY = {
   statistics: null,
 }
 
+const CONFIG_BODY_OK = {
+  status: 'ok',
+  configured: true,
+  provider: 'fake',
+  anthropic_model: null,
+  artifact_root: 'artifacts',
+  credential_available: true,
+  error: null,
+}
+
+const CONFIG_BODY_MISSING = {
+  status: 'missing',
+  configured: false,
+  provider: null,
+  anthropic_model: null,
+  artifact_root: null,
+  credential_available: false,
+  error: null,
+}
+
+const CONFIG_BODY_INVALID = {
+  status: 'invalid',
+  configured: false,
+  provider: null,
+  anthropic_model: null,
+  artifact_root: null,
+  credential_available: false,
+  error: "buildrail.toml: unsupported provider 'openai'.",
+}
+
 describe('OverviewPage', () => {
   it('shows a loading state before data arrives', () => {
-    mockApi({ 'GET /project': { body: PROJECT_BODY } })
+    mockApi({ 'GET /project': { body: PROJECT_BODY }, 'GET /config': { body: CONFIG_BODY_OK } })
 
     render(<OverviewPage />, { wrapper: MemoryRouter })
 
@@ -40,11 +70,11 @@ describe('OverviewPage', () => {
   })
 
   it('renders project info once loaded', async () => {
-    mockApi({ 'GET /project': { body: PROJECT_BODY } })
+    mockApi({ 'GET /project': { body: PROJECT_BODY }, 'GET /config': { body: CONFIG_BODY_OK } })
 
     render(<OverviewPage />, { wrapper: MemoryRouter })
 
-    expect(await screen.findByText('/home/dev/project')).toBeInTheDocument()
+    expect(await screen.findByText('Project: project')).toBeInTheDocument()
     expect(screen.getByText('fake')).toBeInTheDocument()
     expect(screen.getByText('7')).toBeInTheDocument()
   })
@@ -63,6 +93,7 @@ describe('OverviewPage', () => {
   it('runs a command and shows the success result', async () => {
     mockApi({
       'GET /project': { body: PROJECT_BODY },
+      'GET /config': { body: CONFIG_BODY_OK },
       'POST /commands/verify': { body: { success: true, message: 'Verification PASSED' } },
       'GET /runs': {
         body: {
@@ -82,7 +113,7 @@ describe('OverviewPage', () => {
     const user = userEvent.setup()
 
     render(<OverviewPage />, { wrapper: MemoryRouter })
-    await screen.findByText('/home/dev/project')
+    await screen.findByText('Project: project')
 
     await user.click(screen.getByRole('button', { name: 'Verify' }))
 
@@ -93,13 +124,14 @@ describe('OverviewPage', () => {
   it('shows a failure result without crashing when a command fails', async () => {
     mockApi({
       'GET /project': { body: PROJECT_BODY },
+      'GET /config': { body: CONFIG_BODY_OK },
       'POST /commands/verify': { body: { success: false, message: 'Verification FAILED' } },
       'GET /runs': { body: { runs: [] } },
     })
     const user = userEvent.setup()
 
     render(<OverviewPage />, { wrapper: MemoryRouter })
-    await screen.findByText('/home/dev/project')
+    await screen.findByText('Project: project')
 
     await user.click(screen.getByRole('button', { name: 'Verify' }))
 
@@ -119,6 +151,9 @@ describe('OverviewPage', () => {
         if (method === 'GET' && url.endsWith('/project')) {
           return new Response(JSON.stringify(PROJECT_BODY), { status: 200 })
         }
+        if (method === 'GET' && url.endsWith('/config')) {
+          return new Response(JSON.stringify(CONFIG_BODY_OK), { status: 200 })
+        }
         if (method === 'POST' && url.endsWith('/commands/verify')) {
           await verifyGate
           return new Response(JSON.stringify({ success: true, message: 'ok' }), { status: 200 })
@@ -129,7 +164,7 @@ describe('OverviewPage', () => {
     const user = userEvent.setup()
 
     render(<OverviewPage />, { wrapper: MemoryRouter })
-    await screen.findByText('/home/dev/project')
+    await screen.findByText('Project: project')
 
     await user.click(screen.getByRole('button', { name: 'Verify' }))
 
@@ -141,5 +176,125 @@ describe('OverviewPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Explain' })).not.toBeDisabled()
     })
+  })
+
+  it('shows the onboarding setup screen instead of the dashboard when unconfigured', async () => {
+    mockApi({
+      'GET /project': { body: PROJECT_BODY },
+      'GET /config': { body: CONFIG_BODY_MISSING },
+    })
+
+    render(<OverviewPage />, { wrapper: MemoryRouter })
+
+    expect(
+      await screen.findByText(/Buildrail isn.t configured for this project yet/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set up Buildrail' })).toBeInTheDocument()
+    expect(screen.queryByText('Actions')).not.toBeInTheDocument()
+  })
+
+  it('shows the config error alongside the setup prompt when configuration is invalid', async () => {
+    mockApi({
+      'GET /project': { body: PROJECT_BODY },
+      'GET /config': { body: CONFIG_BODY_INVALID },
+    })
+
+    render(<OverviewPage />, { wrapper: MemoryRouter })
+
+    expect(
+      await screen.findByText(/Buildrail isn.t configured for this project yet/),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/unsupported provider/)).toBeInTheDocument()
+  })
+
+  it('opens a setup form with no API key input', async () => {
+    mockApi({
+      'GET /project': { body: PROJECT_BODY },
+      'GET /config': { body: CONFIG_BODY_MISSING },
+    })
+    const user = userEvent.setup()
+
+    render(<OverviewPage />, { wrapper: MemoryRouter })
+    await user.click(await screen.findByRole('button', { name: 'Set up Buildrail' }))
+
+    expect(screen.getByText('Fake / Offline')).toBeInTheDocument()
+    expect(screen.getByText('Anthropic')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Artifact directory/)).toBeInTheDocument()
+    expect(screen.queryAllByRole('textbox', { name: /api.?key/i })).toHaveLength(0)
+    expect(document.querySelector('input[type="password"]')).not.toBeInTheDocument()
+  })
+
+  it('shows the Anthropic model field and environment-key explanation only when Anthropic is selected', async () => {
+    mockApi({
+      'GET /project': { body: PROJECT_BODY },
+      'GET /config': { body: CONFIG_BODY_MISSING },
+    })
+    const user = userEvent.setup()
+
+    render(<OverviewPage />, { wrapper: MemoryRouter })
+    await user.click(await screen.findByRole('button', { name: 'Set up Buildrail' }))
+
+    expect(screen.queryByLabelText(/Anthropic model/)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('radio', { name: /Anthropic/ }))
+
+    expect(screen.getByLabelText(/Anthropic model/)).toBeInTheDocument()
+    expect(screen.getByText(/ANTHROPIC_API_KEY from the environment/)).toBeInTheDocument()
+    expect(screen.getByText(/never stored by Buildrail/)).toBeInTheDocument()
+    expect(document.querySelector('input[type="password"]')).not.toBeInTheDocument()
+  })
+
+  it('completes setup with the fake provider and transitions to the dashboard', async () => {
+    let configured = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        const method = (init?.method ?? 'GET').toUpperCase()
+        if (url.endsWith('/project')) {
+          return new Response(JSON.stringify(PROJECT_BODY), { status: 200 })
+        }
+        if (method === 'GET' && url.endsWith('/config')) {
+          return new Response(JSON.stringify(configured ? CONFIG_BODY_OK : CONFIG_BODY_MISSING), {
+            status: 200,
+          })
+        }
+        if (method === 'PUT' && url.endsWith('/config')) {
+          configured = true
+          return new Response(JSON.stringify(CONFIG_BODY_OK), { status: 200 })
+        }
+        return new Response(JSON.stringify({ runs: [] }), { status: 200 })
+      }),
+    )
+    const user = userEvent.setup()
+
+    render(<OverviewPage />, { wrapper: MemoryRouter })
+    await user.click(await screen.findByRole('button', { name: 'Set up Buildrail' }))
+    await user.click(screen.getByRole('button', { name: 'Set up Buildrail' }))
+
+    await waitFor(
+      () => {
+        expect(screen.getByText('Actions')).toBeInTheDocument()
+      },
+      { timeout: 5000, interval: 25 },
+    )
+    expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument()
+    expect(screen.queryByText(/isn.t configured/)).not.toBeInTheDocument()
+  })
+
+  it('shows a clean error and stays on the form when setup fails', async () => {
+    mockApi({
+      'GET /project': { body: PROJECT_BODY },
+      'GET /config': { body: CONFIG_BODY_MISSING },
+      'PUT /config': { status: 400, body: { error: 'Unknown configuration field(s): bogus.' } },
+    })
+    const user = userEvent.setup()
+
+    render(<OverviewPage />, { wrapper: MemoryRouter })
+    await user.click(await screen.findByRole('button', { name: 'Set up Buildrail' }))
+    await user.click(screen.getByRole('button', { name: 'Set up Buildrail' }))
+
+    expect(await screen.findByText(/Unknown configuration field/)).toBeInTheDocument()
+    expect(screen.getByText('Fake / Offline')).toBeInTheDocument()
   })
 })

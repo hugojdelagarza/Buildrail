@@ -11,11 +11,13 @@ vi.mock('@tauri-apps/api/core', () => ({ isTauri: isTauriMock }))
 const SETTINGS_MOCKS = {
   'GET /config': {
     body: {
+      status: 'ok',
       configured: true,
       provider: 'fake',
       anthropic_model: null,
       artifact_root: 'artifacts',
       credential_available: true,
+      error: null,
     },
   },
   'GET /project': {
@@ -180,5 +182,90 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     expect(await screen.findByText(/Running as a desktop app/)).toBeInTheDocument()
+  })
+
+  it('reads the current project configuration', async () => {
+    mockApi(SETTINGS_MOCKS)
+
+    render(<SettingsPage />)
+
+    expect(await screen.findByText('Project Configuration')).toBeInTheDocument()
+    expect(screen.getByText('fake')).toBeInTheDocument()
+    expect(screen.getByText('artifacts')).toBeInTheDocument()
+    expect(screen.getByText('Available')).toBeInTheDocument()
+  })
+
+  it('edits configuration through the same endpoint onboarding uses', async () => {
+    let updated = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        const method = (init?.method ?? 'GET').toUpperCase()
+        if (method === 'GET' && url.endsWith('/config')) {
+          const body = updated
+            ? { ...SETTINGS_MOCKS['GET /config'].body, provider: 'anthropic' }
+            : SETTINGS_MOCKS['GET /config'].body
+          return new Response(JSON.stringify(body), { status: 200 })
+        }
+        if (method === 'PUT' && url.endsWith('/config')) {
+          updated = true
+          return new Response(
+            JSON.stringify({ ...SETTINGS_MOCKS['GET /config'].body, provider: 'anthropic' }),
+            { status: 200 },
+          )
+        }
+        if (url.endsWith('/project')) {
+          return new Response(JSON.stringify(SETTINGS_MOCKS['GET /project'].body), {
+            status: 200,
+          })
+        }
+        if (url.endsWith('/version')) {
+          return new Response(JSON.stringify(SETTINGS_MOCKS['GET /version'].body), {
+            status: 200,
+          })
+        }
+        return new Response(JSON.stringify({}), { status: 200 })
+      }),
+    )
+    const user = userEvent.setup()
+
+    render(<SettingsPage />)
+    await user.click(await screen.findByRole('button', { name: 'Edit configuration' }))
+    await user.click(screen.getByRole('radio', { name: /Anthropic/ }))
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }))
+
+    expect(await screen.findByText('anthropic')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save configuration' })).not.toBeInTheDocument()
+  })
+
+  it('shows a clean error and keeps editing open when the update fails', async () => {
+    mockApi({
+      ...SETTINGS_MOCKS,
+      'PUT /config': {
+        status: 400,
+        body: { error: "'artifact_root' must stay within the project directory." },
+      },
+    })
+    const user = userEvent.setup()
+
+    render(<SettingsPage />)
+    await user.click(await screen.findByRole('button', { name: 'Edit configuration' }))
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }))
+
+    expect(await screen.findByText(/must stay within the project directory/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save configuration' })).toBeInTheDocument()
+  })
+
+  it('cancels editing without writing anything', async () => {
+    mockApi(SETTINGS_MOCKS)
+    const user = userEvent.setup()
+
+    render(<SettingsPage />)
+    await user.click(await screen.findByRole('button', { name: 'Edit configuration' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.getByRole('button', { name: 'Edit configuration' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save configuration' })).not.toBeInTheDocument()
   })
 })

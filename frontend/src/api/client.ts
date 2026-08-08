@@ -10,6 +10,7 @@ import type {
   CommandResult,
   CommandsResponse,
   ConfigResponse,
+  ConfigUpdateRequest,
   HealthResponse,
   PipelinesResponse,
   ProjectResponse,
@@ -40,7 +41,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST'
+  method?: 'GET' | 'POST' | 'PUT'
   body?: unknown
   signal?: AbortSignal
   timeoutMs?: number
@@ -115,6 +116,8 @@ export const api = {
   pipelines: (signal?: AbortSignal) => request<PipelinesResponse>('/pipelines', { signal }),
   project: (signal?: AbortSignal) => request<ProjectResponse>('/project', { signal }),
   config: (signal?: AbortSignal) => request<ConfigResponse>('/config', { signal }),
+  updateConfig: (fields: ConfigUpdateRequest, signal?: AbortSignal) =>
+    request<ConfigResponse>('/config', { method: 'PUT', body: fields, signal }),
   runs: (limit?: number, signal?: AbortSignal) =>
     request<RunsResponse>(limit ? `/runs?limit=${limit}` : '/runs', { signal }),
   run: (runId: string, signal?: AbortSignal) =>

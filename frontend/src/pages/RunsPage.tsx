@@ -148,7 +148,7 @@ export function RunsPage() {
 
       {data && data.runs.length === 0 && (
         <p className={shared.emptyState}>
-          No runs yet. Execute a command from the Overview page to create one.
+          No runs yet. Run Verify or Project Intelligence to create your first run.
         </p>
       )}
 
