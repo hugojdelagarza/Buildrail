@@ -159,11 +159,13 @@ def test_config_degrades_gracefully_without_config(tmp_path: Path) -> None:
 
     assert status == 200
     assert body == {
+        "status": "missing",
         "configured": False,
         "provider": None,
         "anthropic_model": None,
         "artifact_root": None,
         "credential_available": False,
+        "error": None,
     }
 
 

@@ -14,6 +14,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="buildrail")
     subparsers = parser.add_subparsers(dest="command")
 
+    init_parser = subparsers.add_parser(
+        "init", help="Create a minimal buildrail.toml for this project."
+    )
+    init_parser.add_argument(
+        "--provider",
+        dest="provider",
+        default="fake",
+        choices=["fake", "anthropic"],
+        help="Provider to configure (default: fake, works fully offline).",
+    )
+
     config_parser = subparsers.add_parser("config", help="Manage Buildrail configuration.")
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
     config_subparsers.add_parser("validate", help="Validate the project configuration.")
@@ -152,7 +163,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     engine = CoreEngine()
 
-    if args.command == "config":
+    if args.command == "init":
+        result = engine.init_config(Path.cwd(), provider=args.provider)
+    elif args.command == "config":
         result = engine.validate_config(Path.cwd())
     elif args.command == "provider":
         result = engine.check_provider(Path.cwd())

@@ -43,6 +43,164 @@ def test_validate_config_returns_failure_result_when_config_missing(tmp_path: Pa
     assert "No configuration file found" in result.message
 
 
+def test_init_config_creates_a_minimal_config_file(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.init_config(tmp_path)
+
+    assert result.success is True
+    written = (tmp_path / "buildrail.toml").read_text(encoding="utf-8")
+    assert 'provider = "fake"' in written
+    assert 'artifact_root = "artifacts"' in written
+
+
+def test_init_config_defaults_to_the_fake_provider(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.init_config(tmp_path)
+
+    assert result.success is True
+    assert "provider='fake'" in result.message
+
+
+def test_init_config_accepts_an_explicit_provider(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.init_config(tmp_path, provider="anthropic")
+
+    assert result.success is True
+    written = (tmp_path / "buildrail.toml").read_text(encoding="utf-8")
+    assert 'provider = "anthropic"' in written
+
+
+def test_init_config_refuses_to_overwrite_an_existing_config(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "anthropic"\nartifact_root = "custom"\n', encoding="utf-8"
+    )
+    engine = CoreEngine()
+
+    result = engine.init_config(tmp_path)
+
+    assert result.success is False
+    assert "already exists" in result.message
+    # The existing file must be untouched, not silently reset to defaults.
+    assert (tmp_path / "buildrail.toml").read_text(encoding="utf-8") == (
+        'provider = "anthropic"\nartifact_root = "custom"\n'
+    )
+
+
+def test_init_config_rejects_an_unsupported_provider(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.init_config(tmp_path, provider="openai")
+
+    assert result.success is False
+    assert "unsupported provider" in result.message.lower()
+    assert not (tmp_path / "buildrail.toml").exists()
+
+
+def test_update_config_creates_a_config_when_none_exists(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.update_config(tmp_path, {"provider": "fake"})
+
+    assert result.success is True
+    written = (tmp_path / "buildrail.toml").read_text(encoding="utf-8")
+    assert 'provider = "fake"' in written
+    assert 'artifact_root = "artifacts"' in written
+
+
+def test_update_config_partially_updates_an_existing_config(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    engine = CoreEngine()
+
+    result = engine.update_config(tmp_path, {"provider": "anthropic"})
+
+    assert result.success is True
+    written = (tmp_path / "buildrail.toml").read_text(encoding="utf-8")
+    assert 'provider = "anthropic"' in written
+    # artifact_root was not part of the update and must be preserved.
+    assert 'artifact_root = "artifacts"' in written
+
+
+def test_update_config_rejects_an_unsupported_provider(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.update_config(tmp_path, {"provider": "openai"})
+
+    assert result.success is False
+    assert "unsupported provider" in result.message.lower()
+    assert not (tmp_path / "buildrail.toml").exists()
+
+
+def test_update_config_rejects_an_artifact_root_that_escapes_the_project(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.update_config(tmp_path, {"artifact_root": "../../etc"})
+
+    assert result.success is False
+    assert "within the project" in result.message
+    assert not (tmp_path / "buildrail.toml").exists()
+
+
+def test_update_config_rejects_an_absolute_artifact_root(tmp_path: Path) -> None:
+    engine = CoreEngine()
+    escape_target = str(tmp_path.parent)
+
+    result = engine.update_config(tmp_path, {"artifact_root": escape_target})
+
+    assert result.success is False
+    assert "within the project" in result.message
+
+
+def test_update_config_rejects_unknown_fields(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.update_config(tmp_path, {"provider": "fake", "anthropic_api_key": "sk-ant-x"})
+
+    assert result.success is False
+    assert "anthropic_api_key" in result.message
+    assert not (tmp_path / "buildrail.toml").exists()
+
+
+def test_update_config_never_writes_a_rejected_api_key_field(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    engine.update_config(tmp_path, {"api_key": "sk-ant-super-secret"})
+
+    assert not (tmp_path / "buildrail.toml").exists()
+
+
+def test_update_config_cannot_inject_extra_toml_via_artifact_root(tmp_path: Path) -> None:
+    engine = CoreEngine()
+    malicious = 'artifacts"\nprovider = "anthropic'
+
+    result = engine.update_config(tmp_path, {"provider": "fake", "artifact_root": malicious})
+
+    assert result.success is True
+    from buildrail.config import load_config
+
+    reloaded = load_config(tmp_path)
+    # The injected text must round-trip as inert string content, not as a
+    # second `provider` key that would silently switch providers.
+    assert reloaded.provider == "fake"
+    assert reloaded.artifact_root == malicious
+
+
+def test_update_config_sets_anthropic_model(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.update_config(
+        tmp_path, {"provider": "anthropic", "anthropic_model": "claude-opus-5"}
+    )
+
+    assert result.success is True
+    written = (tmp_path / "buildrail.toml").read_text(encoding="utf-8")
+    assert 'anthropic_model = "claude-opus-5"' in written
+
+
 def test_check_provider_returns_success_result_for_fake_provider(tmp_path: Path) -> None:
     (tmp_path / "buildrail.toml").write_text(
         'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"

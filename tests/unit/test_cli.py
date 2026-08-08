@@ -31,6 +31,56 @@ def test_main_delegates_to_core_engine_and_reflects_its_result(
     assert exit_code == 1
 
 
+def test_init_creates_a_minimal_config(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["init"])
+
+    captured = capsys.readouterr()
+    assert "Created buildrail.toml" in captured.out
+    assert captured.err == ""
+    assert exit_code == 0
+    written = (tmp_path / "buildrail.toml").read_text(encoding="utf-8")
+    assert 'provider = "fake"' in written
+
+
+def test_init_accepts_an_explicit_provider(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["init", "--provider", "anthropic"])
+
+    assert exit_code == 0
+    written = (tmp_path / "buildrail.toml").read_text(encoding="utf-8")
+    assert 'provider = "anthropic"' in written
+
+
+def test_init_rejects_an_unsupported_provider_without_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit):
+        main(["init", "--provider", "openai"])
+
+
+def test_init_fails_without_a_traceback_when_config_already_exists(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["init"])
+
+    captured = capsys.readouterr()
+    assert "already exists" in captured.out
+    assert captured.err == ""
+    assert exit_code == 1
+
+
 def test_config_validate_succeeds(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:

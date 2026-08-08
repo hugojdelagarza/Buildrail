@@ -144,6 +144,38 @@ def test_cors_preflight_options_request_succeeds(running_server: str) -> None:
         assert "POST" in (response.headers.get("Access-Control-Allow-Methods") or "")
 
 
+def test_cors_preflight_allows_put_for_the_config_endpoint(running_server: str) -> None:
+    # A real browser sends this preflight before PUT /config; if the server
+    # doesn't advertise PUT here, the browser blocks the real request and it
+    # never reaches the handler at all — this is what test_put_config_*
+    # below cannot catch on its own, since urllib doesn't enforce CORS.
+    request = urllib.request.Request(
+        f"{running_server}/config",
+        method="OPTIONS",
+        headers={"Origin": "http://127.0.0.1:5173"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.status == 204
+        assert "PUT" in (response.headers.get("Access-Control-Allow-Methods") or "")
+
+
+def test_put_config_endpoint_creates_a_config_over_real_http(running_server: str) -> None:
+    status, body = _request(f"{running_server}/config", method="PUT", body={"provider": "fake"})
+
+    assert status == 200
+    assert body["status"] == "ok"
+    assert body["provider"] == "fake"
+
+
+def test_put_config_endpoint_rejects_an_unsupported_provider_over_real_http(
+    running_server: str,
+) -> None:
+    status, body = _request(f"{running_server}/config", method="PUT", body={"provider": "openai"})
+
+    assert status == 400
+    assert "error" in body
+
+
 def test_no_response_ever_contains_a_credential_looking_value(running_server: str) -> None:
     for path in ("/health", "/version", "/project", "/config", "/skills", "/pipelines"):
         _status, body = _request(f"{running_server}{path}")

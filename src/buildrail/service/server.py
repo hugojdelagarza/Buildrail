@@ -47,6 +47,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b""
         self._handle(read_json_body(raw))
 
+    def do_PUT(self) -> None:  # noqa: N802
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length) if length else b""
+        self._handle(read_json_body(raw))
+
     def do_OPTIONS(self) -> None:  # noqa: N802
         send_cors_preflight(self)
 

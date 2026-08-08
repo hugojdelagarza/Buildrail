@@ -70,7 +70,7 @@ def send_cors_preflight(handler: BaseHTTPRequestHandler) -> None:
     """Answer an OPTIONS preflight request."""
     handler.send_response(204)
     send_cors_headers(handler)
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
     handler.send_header("Access-Control-Allow-Headers", "Content-Type")
     handler.send_header("Content-Length", "0")
     handler.end_headers()

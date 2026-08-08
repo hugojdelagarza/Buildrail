@@ -275,3 +275,125 @@ def test_wrong_method_on_a_command_route_returns_404(tmp_path: Path, method: str
     status, _body = dispatch(method, "/commands/explain", {}, tmp_path)
 
     assert status == 404
+
+
+def test_get_config_reports_missing_when_no_config_file_exists(tmp_path: Path) -> None:
+    status, body = dispatch("GET", "/config", {}, tmp_path)
+
+    assert status == 200
+    assert body["status"] == "missing"
+    assert body["configured"] is False
+    assert body["provider"] is None
+    assert body["error"] is None
+
+
+def test_get_config_reports_invalid_for_malformed_toml(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text("this is not [valid toml", encoding="utf-8")
+
+    status, body = dispatch("GET", "/config", {}, tmp_path)
+
+    assert status == 200
+    assert body["status"] == "invalid"
+    assert body["configured"] is False
+    assert isinstance(body["error"], str)
+
+
+def test_get_config_reports_invalid_for_an_unsupported_provider(tmp_path: Path) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "openai"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+
+    status, body = dispatch("GET", "/config", {}, tmp_path)
+
+    assert status == 200
+    assert body["status"] == "invalid"
+    assert "unsupported provider" in body["error"].lower()
+
+
+def test_get_config_reports_ok_for_a_valid_configured_project(tmp_path: Path) -> None:
+    _init_project(tmp_path, with_provider=True)
+
+    status, body = dispatch("GET", "/config", {}, tmp_path)
+
+    assert status == 200
+    assert body["status"] == "ok"
+    assert body["configured"] is True
+    assert body["provider"] == "fake"
+
+
+def test_get_config_never_exposes_environment_variables_or_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-should-never-appear")
+    _init_project(tmp_path, with_provider=True)
+
+    status, body = dispatch("GET", "/config", {}, tmp_path)
+
+    assert status == 200
+    assert "sk-ant-should-never-appear" not in str(body)
+
+
+def test_put_config_creates_a_config_on_a_fresh_project(tmp_path: Path) -> None:
+    status, body = dispatch("PUT", "/config", {"provider": "fake"}, tmp_path)
+
+    assert status == 200
+    assert body["status"] == "ok"
+    assert body["provider"] == "fake"
+    assert (tmp_path / "buildrail.toml").exists()
+
+
+def test_put_config_updates_an_existing_config(tmp_path: Path) -> None:
+    _init_project(tmp_path, with_provider=True)
+
+    status, body = dispatch("PUT", "/config", {"provider": "anthropic"}, tmp_path)
+
+    assert status == 200
+    assert body["provider"] == "anthropic"
+
+
+def test_put_config_rejects_an_unsupported_provider(tmp_path: Path) -> None:
+    status, body = dispatch("PUT", "/config", {"provider": "openai"}, tmp_path)
+
+    assert status == 400
+    assert "error" in body
+    assert not (tmp_path / "buildrail.toml").exists()
+
+
+def test_put_config_rejects_an_artifact_root_that_escapes_the_project(tmp_path: Path) -> None:
+    status, body = dispatch("PUT", "/config", {"artifact_root": "../escape"}, tmp_path)
+
+    assert status == 400
+    assert "error" in body
+
+
+def test_put_config_rejects_unknown_fields(tmp_path: Path) -> None:
+    status, body = dispatch(
+        "PUT", "/config", {"provider": "fake", "anthropic_api_key": "sk-ant-x"}, tmp_path
+    )
+
+    assert status == 400
+    assert "anthropic_api_key" in body["error"]
+    assert not (tmp_path / "buildrail.toml").exists()
+
+
+def test_put_config_rejects_a_non_object_body(tmp_path: Path) -> None:
+    status, body = dispatch("PUT", "/config", None, tmp_path)
+
+    assert status == 400
+    assert "JSON object" in body["error"]
+
+
+def test_put_config_does_not_require_an_existing_configured_project(tmp_path: Path) -> None:
+    # This is the onboarding path: no buildrail.toml exists yet at all.
+    status, _body = dispatch("PUT", "/config", {"provider": "fake"}, tmp_path)
+
+    assert status == 200
+
+
+@pytest.mark.parametrize("method", ["POST", "DELETE"])
+def test_wrong_method_on_the_config_route_returns_404(tmp_path: Path, method: str) -> None:
+    _init_project(tmp_path)
+
+    status, _body = dispatch(method, "/config", {}, tmp_path)
+
+    assert status == 404

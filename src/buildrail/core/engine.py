@@ -9,7 +9,16 @@ from pathlib import Path
 from buildrail import vcs
 from buildrail.analysis import AnalysisError, ProjectAnalysis, analyze_project, to_dict
 from buildrail.artifacts import ArtifactReader, ArtifactReadError, ArtifactStore
-from buildrail.config import BuildrailConfig, ConfigError, load_config
+from buildrail.config import (
+    CONFIG_FILENAME,
+    DEFAULT_ARTIFACT_ROOT,
+    BuildrailConfig,
+    ConfigError,
+    ensure_artifact_root_within_project,
+    load_config,
+    write_config,
+)
+from buildrail.config import validate as validate_config_fields
 from buildrail.hooks import HookError
 from buildrail.hooks import install as install_hook_file
 from buildrail.hooks import status as hook_status_file
@@ -202,6 +211,87 @@ class CoreEngine:
         except ConfigError as exc:
             return Result(success=False, message=str(exc))
         return Result(success=True, message="Configuration is valid.")
+
+    def init_config(
+        self,
+        project_root: Path,
+        *,
+        provider: str = "fake",
+        artifact_root: str = DEFAULT_ARTIFACT_ROOT,
+    ) -> Result:
+        """Create a minimal `buildrail.toml` for a new project.
+
+        Refuses to overwrite an existing configuration file — re-running
+        `init` on an already-configured project is a no-op error, not a
+        silent reset. Use `update_config` to change an existing project's
+        configuration instead.
+        """
+        config_path = project_root / CONFIG_FILENAME
+        if config_path.exists():
+            return Result(
+                success=False,
+                message=f"{CONFIG_FILENAME} already exists at {config_path}. Not overwriting.",
+            )
+
+        try:
+            candidate = validate_config_fields(
+                {"provider": provider, "artifact_root": artifact_root}
+            )
+            ensure_artifact_root_within_project(project_root, candidate.artifact_root)
+        except (ConfigError, ValueError) as exc:
+            return Result(success=False, message=str(exc))
+
+        write_config(project_root, candidate)
+        return Result(
+            success=True,
+            message=f"Created {CONFIG_FILENAME} with provider='{candidate.provider}'.",
+        )
+
+    def update_config(self, project_root: Path, fields: dict[str, object]) -> Result:
+        """Create or update `buildrail.toml` from a restricted set of known fields.
+
+        Unknown fields (including anything credential-shaped, e.g. an API
+        key) are rejected outright — this endpoint only ever accepts
+        `provider`, `artifact_root`, and `anthropic_model`, the same three
+        fields `BuildrailConfig` models. Missing fields are filled in from
+        the project's existing configuration if one exists, or from
+        Buildrail's offline-friendly defaults otherwise, so callers can send
+        a partial update (e.g. just `{"provider": "anthropic"}`).
+        """
+        allowed_fields = {"provider", "artifact_root", "anthropic_model"}
+        unexpected = set(fields) - allowed_fields
+        if unexpected:
+            return Result(
+                success=False,
+                message=f"Unknown configuration field(s): {', '.join(sorted(unexpected))}.",
+            )
+
+        try:
+            current = load_config(project_root)
+            merged: dict[str, object | None] = {
+                "provider": current.provider,
+                "artifact_root": current.artifact_root,
+                "anthropic_model": current.anthropic_model,
+            }
+        except ConfigError:
+            merged = {
+                "provider": None,
+                "artifact_root": DEFAULT_ARTIFACT_ROOT,
+                "anthropic_model": None,
+            }
+        merged.update(fields)
+
+        try:
+            candidate = validate_config_fields(merged)
+            ensure_artifact_root_within_project(project_root, candidate.artifact_root)
+        except (ConfigError, ValueError) as exc:
+            return Result(success=False, message=str(exc))
+
+        write_config(project_root, candidate)
+        return Result(
+            success=True,
+            message=f"Updated {CONFIG_FILENAME} (provider={candidate.provider}).",
+        )
 
     def check_provider(self, project_root: Path) -> Result:
         """Resolve the configured provider through the gateway and confirm it responds."""

@@ -29,7 +29,7 @@ from buildrail.artifacts import (
     RunNotFoundError,
     RunSummary,
 )
-from buildrail.config import BuildrailConfig, ConfigError, load_config
+from buildrail.config import BuildrailConfig, ConfigError, ConfigNotFoundError, load_config
 from buildrail.core import CoreEngine, Result
 from buildrail.providers import ProviderError, create_provider
 from buildrail.service.descriptors import (
@@ -73,6 +73,14 @@ def dispatch(method: str, raw_path: str, body: JsonBody, project_root: Path) -> 
 
     if method == "GET" and tuple(parts) in _CONFIG_FREE_GET_ROUTES:
         return _dispatch_config_free_get(tuple(parts), project_root)
+
+    # Config writes are handled before the load_config gate below, since the
+    # whole point of this route is to create a configuration that doesn't
+    # exist yet (project onboarding) — it must work on an unconfigured project.
+    if method == "PUT" and parts == ["config"]:
+        if body is None:
+            return 400, {"error": "Request body must be a JSON object."}
+        return _update_config(project_root, body)
 
     try:
         config = load_config(project_root)
@@ -452,18 +460,48 @@ def _project_summary(project_root: Path) -> Response:
 def _config_summary(project_root: Path) -> Response:
     try:
         config = load_config(project_root)
-    except ConfigError:
+    except ConfigNotFoundError:
         return 200, {
+            "status": "missing",
             "configured": False,
             "provider": None,
             "anthropic_model": None,
             "artifact_root": None,
             "credential_available": False,
+            "error": None,
+        }
+    except ConfigError as exc:
+        return 200, {
+            "status": "invalid",
+            "configured": False,
+            "provider": None,
+            "anthropic_model": None,
+            "artifact_root": None,
+            "credential_available": False,
+            "error": str(exc),
         }
     return 200, {
+        "status": "ok",
         "configured": True,
         "provider": config.provider,
         "anthropic_model": config.anthropic_model,
         "artifact_root": config.artifact_root,
         "credential_available": _provider_ready(config),
+        "error": None,
     }
+
+
+def _update_config(project_root: Path, body: JsonObject) -> Response:
+    """Create or update this project's `buildrail.toml` from a restricted field set.
+
+    Delegates all validation and the atomic write to `CoreEngine.update_config`
+    — this handler only maps its `Result` onto an HTTP status: a rejected
+    update (unknown field, invalid provider, an escaping artifact root, ...)
+    is a client error, so it maps to 400, not the 200-with-success:false shape
+    `/commands/{id}` uses for domain-level command outcomes.
+    """
+    engine = CoreEngine()
+    result = engine.update_config(project_root, body)
+    if not result.success:
+        return 400, {"error": result.message}
+    return 200, _config_summary(project_root)[1]
