@@ -43,12 +43,20 @@ def test_version_works_without_a_configured_project(tmp_path: Path) -> None:
     assert status == 200
 
 
-def test_commands_lists_all_six_executable_commands(tmp_path: Path) -> None:
+def test_commands_lists_all_seven_executable_commands(tmp_path: Path) -> None:
     status, body = dispatch("GET", "/commands", {}, tmp_path)
 
     assert status == 200
     ids = {c["id"] for c in body["commands"]}
-    assert ids == {"explain", "docs", "diagram", "verify", "pre-commit", "project-intelligence"}
+    assert ids == {
+        "explain",
+        "dependency-audit",
+        "docs",
+        "diagram",
+        "verify",
+        "pre-commit",
+        "project-intelligence",
+    }
     for command in body["commands"]:
         assert command["endpoint"] == f"/commands/{command['id']}"
         assert command["method"] == "POST"
@@ -113,7 +121,7 @@ def test_project_degrades_gracefully_without_config(tmp_path: Path) -> None:
     assert body["recent_run_count"] == 0
     assert body["latest_run"] is None
     assert body["statistics"] is None
-    assert body["skill_count"] == 7
+    assert body["skill_count"] == 8
     assert body["pipeline_count"] == 2
 
 

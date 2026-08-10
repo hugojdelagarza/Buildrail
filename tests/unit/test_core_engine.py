@@ -994,6 +994,66 @@ def test_explain_project_rejects_a_null_byte_in_path(tmp_path: Path) -> None:
     assert "null byte" in result.message
 
 
+def test_dependency_audit_writes_summary_and_data_artifacts(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    repo = _sample_python_project(tmp_path)
+    (repo / "pyproject.toml").write_text(
+        '[project]\nname = "app"\ndependencies = ["requests>=2.0"]\n', encoding="utf-8"
+    )
+    engine = CoreEngine()
+
+    result = engine.dependency_audit(tmp_path, path=str(repo))
+
+    assert result.success is True
+    run_dir = next((tmp_path / "artifacts").iterdir())
+    assert list(run_dir.glob("*dependency-audit-summary.md"))
+    assert list(run_dir.glob("*dependency-audit-audit.json"))
+
+
+def test_dependency_audit_defaults_to_project_root_when_no_path_given(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    (tmp_path / "main.py").write_text("x = 1\n", encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.dependency_audit(tmp_path)
+
+    assert result.success is True
+
+
+def test_dependency_audit_fails_cleanly_for_a_missing_repository(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    engine = CoreEngine()
+
+    result = engine.dependency_audit(tmp_path, path=str(tmp_path / "does-not-exist"))
+
+    assert result.success is False
+
+
+def test_dependency_audit_fails_cleanly_when_config_missing(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.dependency_audit(tmp_path)
+
+    assert result.success is False
+    assert "No configuration file found" in result.message
+
+
+def test_dependency_audit_never_constructs_a_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _init_config(tmp_path, with_provider=False)
+    repo = _sample_python_project(tmp_path)
+    (repo / "pyproject.toml").write_text(
+        '[project]\nname = "app"\ndependencies = ["anthropic"]\n', encoding="utf-8"
+    )
+    engine = CoreEngine()
+
+    result = engine.dependency_audit(tmp_path, path=str(repo))
+
+    assert result.success is True
+
+
 def test_docs_generate_writes_three_documentation_artifacts_without_a_provider(
     tmp_path: Path,
 ) -> None:

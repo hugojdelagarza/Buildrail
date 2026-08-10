@@ -864,6 +864,37 @@ class CoreEngine:
         artifact_paths = ", ".join(str(a.content_path) for a in step.artifacts)
         return Result(success=True, message=f"Architecture summary written to {artifact_paths}.")
 
+    def dependency_audit(self, project_root: Path, *, path: str | None = None) -> Result:
+        """Run dependency-audit: a deterministic audit of declared dependencies vs.
+        local imports. No provider, no network, no pip/poetry/uv invocation."""
+        try:
+            config = load_config(project_root)
+        except ConfigError as exc:
+            return Result(success=False, message=str(exc))
+
+        try:
+            repo_root = _resolve_repository_path(project_root, path)
+        except ValueError as exc:
+            return Result(success=False, message=str(exc))
+
+        store = ArtifactStore(project_root / config.artifact_root)
+        run_id = store.generate_run_id()
+        context = PipelineContext(
+            run_id=run_id, workdir=str(project_root), inputs={"repository_path": str(repo_root)}
+        )
+        result = PipelineRunner(None, store, steps=("dependency-audit",)).run(context)
+        if not result.success:
+            return Result(success=False, message=result.error or "The pipeline failed.")
+
+        step = result.steps[-1]
+        if step.response.outputs.get("summary") is None or not step.artifacts:
+            return Result(
+                success=False, message="The dependency-audit skill did not produce a summary."
+            )
+
+        artifact_paths = ", ".join(str(a.content_path) for a in step.artifacts)
+        return Result(success=True, message=f"Dependency audit written to {artifact_paths}.")
+
     def docs_generate(
         self,
         project_root: Path,

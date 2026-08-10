@@ -102,6 +102,20 @@ def test_command_explain_accepts_an_explicit_path(tmp_path: Path) -> None:
     assert body["success"] is True
 
 
+def test_command_dependency_audit_writes_a_run_discoverable_via_runs_list(tmp_path: Path) -> None:
+    _init_project(tmp_path)
+
+    status, body = dispatch("POST", "/commands/dependency-audit", {}, tmp_path)
+    assert status == 200
+    assert body["success"] is True
+    assert "written to" in body["message"]
+
+    runs_status, runs_body = dispatch("GET", "/runs", {}, tmp_path)
+    assert runs_status == 200
+    assert len(runs_body["runs"]) == 1
+    assert "dependency-audit" in runs_body["runs"][0]["artifact_types"]
+
+
 def test_command_docs_generate_succeeds_offline(tmp_path: Path) -> None:
     _init_project(tmp_path)
 

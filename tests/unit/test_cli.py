@@ -594,6 +594,33 @@ def test_explain_writes_a_summary_and_prints_success(
     assert "Architecture summary written to" in captured.out
 
 
+def test_dependency_audit_writes_a_report_and_prints_success(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["dependency-audit"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Dependency audit written to" in captured.out
+
+
+def test_dependency_audit_fails_without_a_traceback_when_config_missing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["dependency-audit"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "No configuration file found" in captured.out
+
+
 def test_explain_accepts_an_explicit_path(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:

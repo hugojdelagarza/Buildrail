@@ -76,6 +76,19 @@ COMMANDS: tuple[CommandDescriptor, ...] = (
         category="analysis",
     ),
     CommandDescriptor(
+        id="dependency-audit",
+        display_name="Dependency Audit",
+        description=(
+            "Deterministically audit declared dependencies against local imports. No provider."
+        ),
+        endpoint="/commands/dependency-audit",
+        requires_provider=False,
+        accepts_arguments=True,
+        arguments=(_PATH_ARG,),
+        artifact_types=("dependency-audit",),
+        category="analysis",
+    ),
+    CommandDescriptor(
         id="docs",
         display_name="Generate Docs",
         description="Generate deterministic Markdown docs; optionally enhanced by a provider.",

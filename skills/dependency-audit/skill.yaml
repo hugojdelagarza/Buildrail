@@ -1,0 +1,23 @@
+name: dependency-audit
+version: 0.1.0
+protocol_version: "1.0"
+description: Deterministically audits a Python repository's declared dependencies against local imports.
+entrypoint: "python skill.py"
+
+inputs:
+  - name: repository_path
+    type: string
+    required: true
+    description: Path to the repository to audit.
+  - name: analysis_json
+    type: file
+    required: false
+    description: Path to a pre-computed ProjectAnalysis JSON file, to avoid reanalyzing.
+
+outputs:
+  - name: summary
+    artifact_type: dependency-audit
+  - name: audit
+    artifact_type: dependency-audit
+
+requires_provider: false

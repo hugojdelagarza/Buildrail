@@ -42,6 +42,7 @@ def test_default_registry_discovers_all_built_in_skills() -> None:
     manifests = registry.list_skills()
 
     assert [m.name for m in manifests] == [
+        "dependency-audit",
         "explain-project",
         "generate-diagram",
         "generate-docs",

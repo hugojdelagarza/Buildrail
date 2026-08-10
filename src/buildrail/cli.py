@@ -113,6 +113,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--path", dest="path", default=None, help="Repository to analyze (default: cwd)."
     )
 
+    dependency_audit_parser = subparsers.add_parser(
+        "dependency-audit",
+        help="Deterministically audit declared dependencies against local imports.",
+    )
+    dependency_audit_parser.add_argument(
+        "--path", dest="path", default=None, help="Repository to audit (default: cwd)."
+    )
+
     docs_parser = subparsers.add_parser("docs", help="Generate project documentation.")
     docs_subparsers = docs_parser.add_subparsers(dest="docs_command", required=True)
     docs_generate_parser = docs_subparsers.add_parser(
@@ -207,6 +215,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
     elif args.command == "explain":
         result = engine.explain_project(Path.cwd(), path=args.path)
+    elif args.command == "dependency-audit":
+        result = engine.dependency_audit(Path.cwd(), path=args.path)
     elif args.command == "docs":
         result = engine.docs_generate(
             Path.cwd(), path=args.path, output=args.output, enhance=args.enhance

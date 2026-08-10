@@ -250,6 +250,8 @@ def _dispatch_command(
     path = _optional_str(body, "path")
     if name == "explain":
         return engine.explain_project(project_root, path=path)
+    if name == "dependency-audit":
+        return engine.dependency_audit(project_root, path=path)
     if name == "docs":
         output = _optional_str(body, "output")
         enhance = _optional_bool(body, "enhance")
