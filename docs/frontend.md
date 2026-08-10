@@ -103,9 +103,14 @@ Overview, Runs (list + detail, with client-side search/filter/sort), Artifacts
 (list with client-side search/filter/sort; a Markdown/Mermaid/JSON/plain-text
 viewer with a resizable metadata panel), Skills, Pipelines (with execution
 forms for `pre-commit` and `project-intelligence`), Project Intelligence
-(renders the latest `architecture-summary` JSON artifact), and a Settings page
-(read-only project/config info, a keyboard-shortcuts reference, and a
-reset-layout action). See `README.md` for the command-by-command summary.
+(renders the latest `architecture-summary` JSON artifact, plus an
+independent Dependency Audit section rendering the latest `dependency-audit`
+JSON artifact — dependency counts, possible declaration/import mismatches,
+local/VCS/URL dependencies, and warnings, with no security-alert styling
+since it is a declaration audit, not a vulnerability scanner), and a
+Settings page (read-only project/config info, a keyboard-shortcuts
+reference, and a reset-layout action). See `README.md` for the
+command-by-command summary.
 
 ## Keyboard Shortcuts & Command Palette
 
@@ -157,6 +162,11 @@ in sync.
   not a `ProjectAnalysis` field) — the Project Intelligence page embeds that
   Markdown directly for this section instead of inventing a JSON-only
   substitute.
+- The Dependency Audit section looks up its own latest run by
+  `dependency-audit` artifact type, independently of the `architecture-summary`
+  lookup above — `dependency-audit` is a standalone command, not a
+  project-intelligence pipeline step, so the section renders whether or not a
+  project-intelligence run exists.
 
 ## Tauri Shell Internals
 

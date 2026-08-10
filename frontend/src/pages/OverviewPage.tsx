@@ -21,6 +21,7 @@ const ACTIONS: ActionDef[] = [
   { id: 'diagram', label: 'Generate Diagram' },
   { id: 'pre-commit', label: 'Run Pre-Commit' },
   { id: 'project-intelligence', label: 'Run Project Intelligence' },
+  { id: 'dependency-audit', label: 'Dependency Audit' },
 ]
 
 export function OverviewPage() {

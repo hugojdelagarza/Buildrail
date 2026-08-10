@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
-import type { ArtifactDetail, ProjectAnalysis, RunSummary } from '../api/types'
+import type { ArtifactDetail, DependencyAudit, ProjectAnalysis, RunSummary } from '../api/types'
 import { useAsync } from '../hooks/useAsync'
 import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
 import { MarkdownView } from '../components/MarkdownView'
 import { MermaidView } from '../components/MermaidView'
+import { DependencyAuditSummary } from '../components/DependencyAuditSummary'
 import shared from '../styles/shared.module.css'
 
 interface ProjectIntelligenceData {
@@ -14,6 +15,18 @@ interface ProjectIntelligenceData {
   summaryMarkdown: string | null
   diagramContent: string | null
   documentationArtifacts: ArtifactDetail[]
+}
+
+interface DependencyAuditData {
+  run: RunSummary
+  audit: DependencyAudit
+  rawJson: string
+  markdownArtifactId: string | null
+}
+
+interface PageData {
+  intelligence: ProjectIntelligenceData | null
+  dependencyAudit: DependencyAuditData | null
 }
 
 async function findLatestProjectIntelligence(
@@ -50,12 +63,47 @@ async function findLatestProjectIntelligence(
   }
 }
 
+async function findLatestDependencyAudit(signal: AbortSignal): Promise<DependencyAuditData | null> {
+  const { runs } = await api.runs(20, signal)
+  const candidate = runs.find((run) => run.artifact_types.includes('dependency-audit'))
+  if (!candidate) return null
+
+  const detail = await api.run(candidate.run_id, signal)
+  const jsonArtifact = detail.artifacts.find(
+    (artifact) =>
+      artifact.type === 'dependency-audit' && artifact.content_type === 'application/json',
+  )
+  const markdownArtifact = detail.artifacts.find(
+    (artifact) => artifact.type === 'dependency-audit' && artifact.content_type === 'text/markdown',
+  )
+  if (!jsonArtifact) return null
+
+  const jsonPayload = await api.artifact(jsonArtifact.id, signal)
+
+  return {
+    run: candidate,
+    audit: (jsonPayload.content_json ?? {}) as unknown as DependencyAudit,
+    rawJson: jsonPayload.content,
+    markdownArtifactId: markdownArtifact?.id ?? null,
+  }
+}
+
+async function fetchPageData(signal: AbortSignal): Promise<PageData> {
+  const [intelligence, dependencyAudit] = await Promise.all([
+    findLatestProjectIntelligence(signal),
+    findLatestDependencyAudit(signal),
+  ])
+  return { intelligence, dependencyAudit }
+}
+
 export function ProjectIntelligencePage() {
-  const fetcher = useCallback((signal: AbortSignal) => findLatestProjectIntelligence(signal), [])
+  const fetcher = useCallback((signal: AbortSignal) => fetchPageData(signal), [])
   const { data, error, loading, reload } = useAsync(fetcher, [])
   useRegisterRefresh(reload)
   const [running, setRunning] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
+  const [auditRunning, setAuditRunning] = useState(false)
+  const [auditError, setAuditError] = useState<string | null>(null)
 
   const runNow = useCallback(async () => {
     setRunning(true)
@@ -71,38 +119,86 @@ export function ProjectIntelligencePage() {
     }
   }, [reload])
 
+  const runDependencyAuditNow = useCallback(async () => {
+    setAuditRunning(true)
+    setAuditError(null)
+    try {
+      const response = await api.runCommand('dependency-audit')
+      if (!response.success) setAuditError(response.message)
+      reload()
+    } catch (err) {
+      setAuditError(err instanceof ApiError ? err.message : 'Unexpected error.')
+    } finally {
+      setAuditRunning(false)
+    }
+  }, [reload])
+
   if (loading) return <p className={shared.loadingState}>Loading project intelligence…</p>
   if (error) return <p className={shared.errorState}>{error}</p>
 
-  if (!data) {
-    return (
-      <div className={shared.page}>
-        <div className={shared.pageHeader}>
-          <h1 className={shared.pageTitle}>Project Intelligence</h1>
-        </div>
-        <p className={shared.emptyState}>
-          No project intelligence run exists yet. Generate one to see architecture, statistics,
-          modules, and diagrams for this project.
-        </p>
-        <div className={shared.buttonRow}>
-          <button
-            type="button"
-            className={shared.buttonPrimary}
-            disabled={running}
-            onClick={() => void runNow()}
-          >
-            {running ? 'Running…' : 'Run Project Intelligence'}
-          </button>
-        </div>
-        {runError && <p className={shared.errorState}>{runError}</p>}
-      </div>
-    )
-  }
-
-  const { analysis } = data
+  const intelligence = data?.intelligence ?? null
+  const dependencyAudit = data?.dependencyAudit ?? null
 
   return (
     <div className={shared.page}>
+      {!intelligence ? (
+        <>
+          <div className={shared.pageHeader}>
+            <h1 className={shared.pageTitle}>Project Intelligence</h1>
+          </div>
+          <p className={shared.emptyState}>
+            No project intelligence run exists yet. Generate one to see architecture, statistics,
+            modules, and diagrams for this project.
+          </p>
+          <div className={shared.buttonRow}>
+            <button
+              type="button"
+              className={shared.buttonPrimary}
+              disabled={running}
+              onClick={() => void runNow()}
+            >
+              {running ? 'Running…' : 'Run Project Intelligence'}
+            </button>
+          </div>
+          {runError && <p className={shared.errorState}>{runError}</p>}
+        </>
+      ) : (
+        <ProjectIntelligenceView
+          data={intelligence}
+          running={running}
+          runError={runError}
+          onRun={() => void runNow()}
+        />
+      )}
+
+      <DependencyAuditSummary
+        audit={dependencyAudit?.audit ?? null}
+        runId={dependencyAudit?.run.run_id ?? null}
+        markdownArtifactId={dependencyAudit?.markdownArtifactId ?? null}
+        rawJson={dependencyAudit?.rawJson ?? null}
+        running={auditRunning}
+        error={auditError}
+        onRun={() => void runDependencyAuditNow()}
+      />
+    </div>
+  )
+}
+
+function ProjectIntelligenceView({
+  data,
+  running,
+  runError,
+  onRun,
+}: {
+  data: ProjectIntelligenceData
+  running: boolean
+  runError: string | null
+  onRun: () => void
+}) {
+  const { analysis } = data
+
+  return (
+    <>
       <div className={shared.pageHeader}>
         <div>
           <h1 className={shared.pageTitle}>{analysis.repository_name}</h1>
@@ -111,15 +207,11 @@ export function ProjectIntelligencePage() {
             <Link to={`/runs/${encodeURIComponent(data.run.run_id)}`}>{data.run.run_id}</Link>
           </p>
         </div>
-        <button
-          type="button"
-          className={shared.button}
-          disabled={running}
-          onClick={() => void runNow()}
-        >
+        <button type="button" className={shared.button} disabled={running} onClick={onRun}>
           {running ? 'Running…' : 'Re-run'}
         </button>
       </div>
+      {runError && <p className={shared.errorState}>{runError}</p>}
 
       <div className={shared.statGrid}>
         <Stat label="Python Files" value={analysis.statistics.python_files} />
@@ -246,7 +338,7 @@ export function ProjectIntelligencePage() {
           <MarkdownView content={data.summaryMarkdown} />
         </Section>
       )}
-    </div>
+    </>
   )
 }
 

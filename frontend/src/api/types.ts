@@ -225,3 +225,39 @@ export interface ProjectAnalysis {
   statistics: ProjectStatistics
   warnings: { kind: string; path: string; message: string }[]
 }
+
+// The dependency-audit skill's JSON sidecar artifact (see
+// src/buildrail/dependencies/models.py's DependencyAudit). A declaration
+// audit, not a vulnerability/CVE scanner.
+export interface DeclaredDependency {
+  name: string
+  raw: string
+  group: string
+  source: string
+  version_constraint: string | null
+  is_pinned: boolean
+  is_vcs: boolean
+  is_url: boolean
+  is_editable: boolean
+  is_local_path: boolean
+}
+
+export interface DependencyAuditWarning {
+  kind: string
+  path: string
+  message: string
+}
+
+export interface DependencyAudit {
+  schema_version: string
+  repository_name: string
+  repository_root: string
+  build_backend: string | null
+  sources: string[]
+  dependencies: DeclaredDependency[]
+  duplicates: { name: string; occurrences: string[] }[]
+  conflicts: { name: string; constraints: string[]; note: string }[]
+  mismatches: { name: string; kind: string; note: string }[]
+  observed_third_party_imports: string[]
+  warnings: DependencyAuditWarning[]
+}

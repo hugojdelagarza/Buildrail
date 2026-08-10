@@ -147,6 +147,29 @@ buildrail run project-intelligence --enhance
 Every artifact from any of these commands is browsable with the same
 `buildrail runs`/`buildrail artifacts` commands as the rest of Buildrail.
 
+### Dependency Audit
+
+```
+buildrail dependency-audit
+buildrail dependency-audit --path <repository>
+```
+
+A fully local, offline audit of a Python repository's declared
+dependencies (`pyproject.toml`, `requirements*.txt`) against the imports
+Buildrail's deterministic analyzer observes in the code — declared
+runtime/dev/optional dependencies, version constraints, duplicate and
+conflicting declarations, unpinned packages, and VCS/URL/local-path/editable
+dependencies. It never runs `pip`/`poetry`/`uv`, never imports the analyzed
+project, and never contacts a package registry.
+
+**This is not a vulnerability or CVE scanner.** It reports deterministic
+facts about declarations and local imports only; it does not check any
+package against a security database. Because Python import names and
+distribution names don't always match (`pyyaml` vs. `yaml`), mismatches
+between declared dependencies and observed imports are reported as
+conservative, uncertain observations — never as confident "unused" or
+"missing" claims.
+
 ### Git Pre-Commit Hook
 
 `buildrail hooks install` adds a local Git pre-commit hook that runs
@@ -261,7 +284,8 @@ desktop-specific limitations.
 buildrail/
 ├── src/        # CLI, Core Engine, Provider Gateway, Skill Registry, Pipeline Runner, Artifact Store/Reader
 ├── skills/     # reusable skill definitions (review-diff, test-summary, verify-project,
-│               #   release-notes, explain-project, generate-docs, generate-diagram)
+│               #   release-notes, explain-project, generate-docs, generate-diagram,
+│               #   dependency-audit)
 ├── plugins/    # optional cloud/integration plugins (later phase)
 ├── frontend/   # local React/Vite dashboard — talks to `buildrail serve` over HTTP only
 │   └── src-tauri/  # optional minimal Tauri shell that hosts the same frontend natively
