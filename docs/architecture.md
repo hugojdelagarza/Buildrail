@@ -166,6 +166,7 @@ internals or a specific provider's SDK.
 buildrail/
 ├── src/            # CLI + Core Engine + Provider Gateway + adapters
 ├── skills/         # reusable skill definitions, one directory each
+├── frontend/       # local React/Vite dashboard, talks to `buildrail serve` over HTTP only
 ├── plugins/        # optional cloud/integration plugins (Phase 8)
 ├── tests/          # test suite, mirrors src/ structure
 ├── artifacts/      # generated run output (git-ignored)

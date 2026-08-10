@@ -195,9 +195,11 @@ This is an explicit open risk (§9), not a solved problem; it should be
 addressed before community skills are distributed for wide use, not
 before Milestone 1.
 
-**Milestone 1 implementation note:** built-in skills (`review-diff`,
-`test-summary`, `release-notes`, `verify-project`) run in-process (§1's
-phasing note), so there is no subprocess boundary yet for a loopback
+**Implementation note:** all built-in skills (`review-diff`,
+`test-summary`, `release-notes`, `verify-project`, `explain-project`,
+`generate-docs`, `generate-diagram`, `dependency-audit`) still run
+in-process (§1's phasing note), so there is no subprocess boundary yet
+for a loopback
 endpoint to cross. `SkillRequest`/`SkillResponse` live in
 `src/buildrail/skill_protocol.py`; the Provider Gateway is passed to the
 skill's `run()` function as a direct second argument instead of via

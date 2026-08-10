@@ -10,16 +10,25 @@ phase already names it — nothing here is speculative beyond what
 buildrail/
 ├── src/
 │   └── buildrail/       # the installable package (src-layout; see pyproject.toml)
-│       ├── cli/            # command parsing, output formatting
-│       ├── core/           # Pipeline Runner, Skill Registry, Run State
-│       ├── artifacts/       # Artifact Store: writer, reader, metadata schema
+│       ├── cli.py           # command parsing, output formatting (flat module)
+│       ├── core/            # CoreEngine: orchestrates every command, delegates to the packages below
+│       ├── pipeline/         # Pipeline Runner, named pipelines (pre-commit, project-intelligence)
+│       ├── skills/           # Skill Registry: manifest discovery, validation, in-process execution
+│       ├── artifacts/        # Artifact Store: writer, reader, metadata schema
 │       ├── providers/
-│       │   ├── gateway/      # Provider Gateway: interface, retry policy, usage accounting
-│       │   └── adapters/     # one module per concrete provider
-│       ├── config/          # config loading and validation
+│       │   ├── gateway.py      # Provider Gateway: interface, retry policy, usage accounting
+│       │   ├── registry.py     # resolves configured provider name to an adapter
+│       │   └── adapters/       # one module per concrete provider (fake, anthropic)
+│       ├── analysis/         # deterministic, offline AST-based repository analyzer
+│       ├── dependencies/     # dependency-audit's parsing/analysis logic
+│       ├── hooks/            # local Git pre-commit hook management
+│       ├── service/          # buildrail serve: the local HTTP service
+│       ├── config/           # config loading and validation
+│       ├── vcs.py            # local Git helpers (diff collection, base-ref resolution)
 │       └── skill_protocol.py  # SkillRequest/SkillResponse: the shared skill wire contract
 ├── skills/              # built-in, first-party skills
-├── plugins/             # optional cloud/integration plugins (Phase 8)
+├── frontend/            # local React/Vite dashboard + optional Tauri desktop shell
+├── plugins/             # optional cloud/integration plugins (Phase 8, not yet created)
 ├── docs/                # design and specification documents
 ├── tests/
 │   ├── unit/
@@ -30,28 +39,23 @@ buildrail/
 └── artifacts/           # local run output — git-ignored
 ```
 
-`examples/` is deliberately **not** included. No roadmap phase owns it,
-and adding it now would be exactly the kind of directory that exists
-"because we might want it" rather than because something needs it —
-add it when a phase actually produces example projects worth shipping.
+`examples/` is deliberately **not** included in the ownership rules
+below. No roadmap phase owns it; it holds standalone reference material
+that isn't part of the app.
 
-**Current state (Milestone 1, in progress):**
-`src/buildrail/cli.py` is a single flat module with real `argparse`
-subcommand parsing (`buildrail`, `buildrail config validate`) — not yet
-a `cli/` package, since there's still only a handful of commands to
-dispatch, not enough to warrant subdividing.
-`src/buildrail/core/` holds `engine.py` (`CoreEngine`, `Result`); it has
-no Pipeline Runner or Skill Registry yet — those land when a real skill
-exists to run.
+**Current state:** `src/buildrail/cli.py` remains a single flat module
+with real `argparse` subcommand parsing — it has grown to dispatch every
+command listed in `README.md`, not just Milestone 1's one command, but
+still hasn't needed subdividing into a `cli/` package. `src/buildrail/core/`
+holds `engine.py` (`CoreEngine`, `Result`), which orchestrates every
+command by delegating to the sibling packages above — the Pipeline
+Runner (`pipeline/`) and Skill Registry (`skills/`) are their own
+top-level packages that `core/` imports and coordinates, not
+sub-modules nested inside `core/` as originally sketched.
 `src/buildrail/config/` holds `loader.py`: `load_config()`, the
 `BuildrailConfig` dataclass, and the `ConfigError` exception hierarchy —
-loads and validates `buildrail.toml` (`docs/architecture.md` §3.5)
-against exactly what Milestone 1 needs (`provider`, `artifact_root`),
+loads and validates `buildrail.toml` (`docs/architecture.md` §3.5),
 stdlib-only, no secrets.
-`artifacts/` and `providers/` are not created yet. Each subdivision
-above is created (as a real package, not a stub) only when the phase
-that needs it actually lands, per the ownership rules below — not all
-at once.
 
 ## Ownership and Dependency Rules
 
@@ -69,16 +73,20 @@ out where it's easy to get wrong by accident.
   so a future UI/API consumes the exact same path (`docs/artifacts.md` §8).
 
 ### `src/buildrail/core/`
-- **Owns:** Pipeline Runner, Skill Registry, Run State, orchestration of
-  a skill's execution lifecycle (`docs/skills.md` §6).
+- **Owns:** `CoreEngine`, the single orchestration entry point every CLI
+  command calls into. Coordinates the Pipeline Runner (`src/buildrail/pipeline`)
+  and Skill Registry (`src/buildrail/skills`) rather than containing
+  their logic itself (`docs/skills.md` §6).
 - **Allowed deps:** `src/buildrail/artifacts` (to persist output),
-  `src/buildrail/providers/gateway` (interface only),
-  `src/buildrail/config`, `src/buildrail/skill_protocol`.
+  `src/buildrail/pipeline`, `src/buildrail/skills`,
+  `src/buildrail/providers` (the gateway interface, not adapters),
+  `src/buildrail/config`, `src/buildrail/skill_protocol`,
+  `src/buildrail/analysis`, `src/buildrail/dependencies`,
+  `src/buildrail/hooks`, `src/buildrail/vcs`.
 - **Forbidden:** importing anything from `src/buildrail/cli`,
   `src/buildrail/providers/adapters` (must go through the gateway), or
   any specific skill's internals. The Core Engine knows skills only
-  through the manifest + subprocess protocol, never by importing skill
-  code.
+  through the manifest + protocol, never by importing skill code.
 
 ### `src/buildrail/artifacts/`
 - **Owns:** artifact id/path generation, atomic write, metadata schema
@@ -89,7 +97,7 @@ out where it's easy to get wrong by accident.
   `src/buildrail/cli` or any skill — artifacts are a data layer,
   agnostic to what produced them.
 
-### `src/buildrail/providers/gateway/`
+### `src/buildrail/providers/gateway.py` (+ `types.py`, `registry.py`)
 - **Owns:** the `ProviderRequest`/`ProviderResponse` contract, retry
   policy, usage/cost aggregation, capability checks
   (`docs/provider-interface.md`).

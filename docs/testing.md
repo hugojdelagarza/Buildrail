@@ -48,10 +48,10 @@ tests.
 The Fake Provider does double duty, and that's a deliberate design
 point, not an accident: it's both test infrastructure (used in
 integration/e2e tests) **and** a documented offline developer mode
-(`BUILDRAIL_PROVIDER=fake`) a contributor can run the whole system
-against with zero API key. This directly reinforces the local-first
-principle — the "does this run at all" question never depends on having
-a funded API account.
+(`provider = "fake"` in `buildrail.toml`, the default `buildrail init`
+writes) a contributor can run the whole system against with zero API
+key. This directly reinforces the local-first principle — the "does
+this run at all" question never depends on having a funded API account.
 
 ## 3. Determinism
 

@@ -9,12 +9,15 @@ of truth. Pipelines, skills, and workflows run locally by default; AI
 providers and cloud services are optional, swappable backends rather than
 hard requirements.
 
-> **Status:** Phases 0–3 are complete: CLI, Core Engine, configuration,
-> Provider Gateway (Fake + Anthropic adapters), a manifest-driven Skill
-> Registry (four built-in skills), the Artifact Store/Reader, Git hook
-> management, and the first named pipeline (`buildrail run pre-commit`)
-> are all implemented. See [docs/roadmap.md](docs/roadmap.md) for phase
-> status and what's next.
+> **Status:** Phases 0–3 and 6 are complete: CLI, Core Engine,
+> configuration, Provider Gateway (Fake + Anthropic adapters), a
+> manifest-driven Skill Registry (eight built-in skills), the Artifact
+> Store/Reader, Git hook management, and named pipelines
+> (`buildrail run pre-commit`, `buildrail run project-intelligence`) are
+> all implemented — plus a local HTTP service and dashboard
+> (`buildrail serve`) and a dependency audit (`buildrail dependency-audit`)
+> that go beyond the original roadmap. See
+> [docs/roadmap.md](docs/roadmap.md) for phase status and what's next.
 
 ## Why Buildrail
 

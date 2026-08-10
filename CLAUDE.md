@@ -20,13 +20,12 @@ conventions, and `CONTRIBUTING.md` covers the day-to-day dev workflow.
 
 ## Project Status
 
-**Milestone 1 (in progress).** See "Current Project Context" below for
-what's done so far. Do not implement Milestone 1's remaining business
-logic (review skill, Provider Gateway, Anthropic adapter, artifact
-writing), add dependencies beyond what an approved step requires, or
-scaffold ahead of the current step without the user's approval. Full
-scope and acceptance criteria: `docs/milestone-1.md`. Phase-by-phase
-status: `docs/roadmap.md`.
+Milestone 1 and roadmap Phases 0–3 and 6 are complete; see
+`docs/roadmap.md` for full phase-by-phase status (including what's
+`Not started`/`Deferred`) and `docs/milestone-1.md` for Milestone 1's
+original scope and acceptance criteria. Do not add dependencies beyond
+what an approved step requires, or scaffold ahead of a real, current
+need without the user's approval.
 
 ## Current Project Context
 
@@ -37,21 +36,24 @@ when one changes or a milestone completes; it's a snapshot, not a log:
 - Buildrail is open source.
 - Python 3.12 is the current implementation language.
 - The CLI delegates to the Core Engine.
-- Providers are interchangeable.
-- Skills are reusable and provider-neutral.
-- Generated outputs are typed artifacts.
+- Providers are interchangeable — Fake and Anthropic adapters exist
+  behind the Provider Gateway (`src/buildrail/providers`).
+- Skills are reusable and provider-neutral; built-in skills currently
+  run in-process against the same request/response contract a real
+  subprocess transport would use later (`docs/skills.md` §1).
+- Built-in skills: `review-diff`, `test-summary`, `release-notes`,
+  `verify-project`, `explain-project`, `generate-docs`,
+  `generate-diagram`, `dependency-audit`.
+- Named pipelines: `pre-commit`, `project-intelligence`.
+- Generated outputs are typed artifacts, written under `artifact_root`
+  and browsable via `buildrail runs`/`buildrail artifacts`.
+- A local HTTP service (`buildrail serve`) and a React/Vite dashboard
+  under `frontend/` exist, plus an optional minimal Tauri desktop shell
+  — see `docs/frontend.md`.
 - Tests run offline by default.
 - Buildrail is implemented one complete vertical slice at a time.
-- Current phase: Milestone 1 implementation.
-- Current completed foundation:
-  - Architecture and engineering specification.
-  - Python project scaffolding.
-  - Core Engine skeleton.
-  - CLI delegation to `CoreEngine`.
-  - Project configuration loading and validation (`buildrail config
-    validate`, `src/buildrail/config`, `buildrail.toml`).
-- Do not implement cloud infrastructure, a web UI, pipelines, multiple
-  providers, or community skill distribution before their roadmap phase.
+- Do not implement cloud infrastructure or community skill distribution
+  before their roadmap phase (`docs/roadmap.md` Phase 8).
 
 ## Core Design Rules
 

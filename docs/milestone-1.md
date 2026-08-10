@@ -1,11 +1,10 @@
 # Milestone 1 — Single Skill, End to End
 
-> **Status: In progress.** Repository scaffolding, the Core Engine
-> skeleton, and project configuration loading/validation
-> (`buildrail config validate`, `src/buildrail/config`) are complete and
-> committed. None of the remaining business logic — the review skill,
-> the Provider Gateway, the Anthropic adapter, artifact writing — has
-> been implemented yet.
+> **Status: Complete.** Repository scaffolding, the Core Engine, project
+> configuration loading/validation (`buildrail config validate`,
+> `src/buildrail/config`), the `review-diff` skill, the Provider Gateway,
+> and the Fake and Anthropic adapters are all implemented and committed.
+> See `docs/roadmap.md` Phase 1 for confirmation and what followed.
 
 > **Revision note:** this milestone was approved before
 > `docs/artifacts.md`, `docs/skills.md`, `docs/provider-interface.md`,

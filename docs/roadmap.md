@@ -103,6 +103,29 @@ artifact.
   optional integrations (e.g. posting a report to GitHub/Slack) as
   plugins outside the core, never required to run Buildrail locally.
 
+## Current Implementation Beyond the Original Roadmap
+
+A few complete, working slices exist that don't map cleanly onto Phases
+4–8 above, because they solve problems the original phase list didn't
+anticipate rather than advancing toward one of its named features:
+
+- **Project init and configuration** — `buildrail init` and
+  `buildrail config validate`, plus a first-run onboarding flow in the
+  frontend, for creating and checking `buildrail.toml`.
+- **Local HTTP service and dashboard** — `buildrail serve` exposes
+  `CoreEngine`/`ArtifactReader` functionality over a localhost-only HTTP
+  API; a React/Vite dashboard under `frontend/` (and an optional minimal
+  Tauri desktop shell) consumes it. See `docs/frontend.md`.
+- **Dependency audit** — `buildrail dependency-audit`, a deterministic,
+  offline audit of a repository's declared dependencies against local
+  imports (explicitly not a vulnerability/CVE scanner). Kept standalone
+  rather than folded into the `project-intelligence` pipeline, to avoid
+  disturbing that pipeline's fixed three-step contract.
+
+These are verified the same way every phase above is (`docs/testing.md`,
+offline by default); they're recorded here rather than forcing a new
+numbered phase onto each one.
+
 ## Sequencing Principles
 
 - A phase does not start until the previous phase's vertical slice
