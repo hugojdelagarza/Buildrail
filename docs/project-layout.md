@@ -12,8 +12,15 @@ buildrail/
 │   └── buildrail/       # the installable package (src-layout; see pyproject.toml)
 │       ├── cli.py           # command parsing, output formatting (flat module)
 │       ├── core/            # CoreEngine: orchestrates every command, delegates to the packages below
-│       ├── pipeline/         # Pipeline Runner, named pipelines (pre-commit, project-intelligence)
+│       ├── pipeline/         # Pipeline Runner + Registry: built-in + project-local pipelines
+│       │   ├── runner.py       # PipelineRunner: sequential skill execution
+│       │   ├── registry.py     # PipelineRegistry: discovery, precedence (docs/pipelines.md)
+│       │   ├── manifest.py     # project-local pipeline YAML parsing/validation
+│       │   └── scaffold.py     # `buildrail pipeline create` / `POST /pipelines`
 │       ├── skills/           # Skill Registry: manifest discovery, validation, in-process execution
+│       │   ├── registry.py     # built-in + project-local discovery, precedence (docs/skills.md §10)
+│       │   └── scaffold.py     # `buildrail skill create` / `POST /skills`
+│       ├── extensions.py     # shared .buildrail/ layout + name-safety for skills and pipelines
 │       ├── artifacts/        # Artifact Store: writer, reader, metadata schema
 │       ├── providers/
 │       │   ├── gateway.py      # Provider Gateway: interface, retry policy, usage accounting
@@ -30,6 +37,8 @@ buildrail/
 ├── frontend/            # local React/Vite dashboard + optional Tauri desktop shell
 ├── plugins/             # optional cloud/integration plugins (Phase 8, not yet created)
 ├── docs/                # design and specification documents
+├── examples/
+│   └── project-local/   # example project-local skill/pipeline, never auto-discovered
 ├── tests/
 │   ├── unit/
 │   ├── integration/
@@ -42,6 +51,13 @@ buildrail/
 `examples/` is deliberately **not** included in the ownership rules
 below. No roadmap phase owns it; it holds standalone reference material
 that isn't part of the app.
+
+**Not part of this repository:** `.buildrail/skills/` and
+`.buildrail/pipelines/` are per-*project* directories — created by
+`buildrail init` inside whatever repository a developer runs Buildrail
+against, never inside Buildrail's own source tree (this repository's own
+`.gitignore` does not need to, and does not, special-case them). See
+`docs/skills.md` §10 and `docs/pipelines.md`.
 
 **Current state:** `src/buildrail/cli.py` remains a single flat module
 with real `argparse` subcommand parsing — it has grown to dispatch every

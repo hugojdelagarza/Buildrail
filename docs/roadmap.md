@@ -103,6 +103,40 @@ artifact.
   optional integrations (e.g. posting a report to GitHub/Slack) as
   plugins outside the core, never required to run Buildrail locally.
 
+## Phase 9 — Project-Local Extensibility — **Complete**
+
+- Every project gets its own extension points: `buildrail init` (and
+  `buildrail init --extensions` for an already-configured project)
+  scaffolds `.buildrail/skills/` and `.buildrail/pipelines/`.
+- Project-local skills (`.buildrail/skills/<name>/`) use the exact same
+  manifest and `SkillRequest`/`SkillResponse` protocol as built-in
+  skills — `SkillRegistry` discovers both together, with a project-local
+  skill sharing a built-in's name failing discovery clearly rather than
+  silently overriding it. `buildrail skill create <name>` scaffolds one;
+  the same function backs the local HTTP service's `POST /skills`.
+- Project-local pipelines (`.buildrail/pipelines/<name>.yaml`) are a
+  small declarative YAML format — an ordered list of existing skills,
+  each with an optional `condition` (`always`/`changes_exist`) and
+  `inputs` — executed generically by `CoreEngine.run_named_pipeline`,
+  sharing Buildrail's existing run/artifact model exactly as `pre-commit`
+  and `project-intelligence` already do. `buildrail pipeline create` and
+  `POST /pipelines` scaffold one from structured input, never raw YAML.
+- A single `PipelineRegistry` (`docs/pipelines.md`) is now the shared
+  source of truth for built-in *and* project-local pipelines that the
+  CLI (`buildrail run <name>`, `buildrail pipeline list`/`inspect`), the
+  local HTTP service, and the frontend all read — built-in pipelines
+  (`pre-commit`, `project-intelligence`) keep their bespoke orchestration
+  and CLI flags; only their *description* moved into the shared registry.
+- The frontend's Skills and Pipelines pages show built-in vs.
+  project-local source, filter by source, and can create either through
+  narrowly-scoped forms — no arbitrary code or YAML upload. See
+  `docs/frontend.md`.
+- Project-local skills are trusted repository code, documented as such
+  everywhere they're surfaced — Buildrail does not sandbox them. This is
+  explicitly not a community/third-party skill distribution mechanism;
+  that remains gated on solving sandboxing separately (`docs/skills.md`
+  §9).
+
 ## Current Implementation Beyond the Original Roadmap
 
 A few complete, working slices exist that don't map cleanly onto Phases

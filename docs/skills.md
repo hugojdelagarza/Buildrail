@@ -285,3 +285,47 @@ and outbound-network access beyond the provider loopback are
 unrestricted in this design. Treat community-skill distribution as
 gated on solving that separately, not as already solved by this
 document.
+
+## 10. Project-Local Skills
+
+A project-local skill lives at `.buildrail/skills/<name>/` — the exact
+same directory structure, `skill.yaml` manifest, and
+`SkillRequest`/`SkillResponse` protocol as a built-in skill (§2–§5).
+**There is no second skill format.** `SkillRegistry` discovers built-in
+skills (`skills/`) and, when constructed with a `project_root`,
+project-local skills (`<project_root>/.buildrail/skills/`) together —
+built-in directories are always searched first.
+
+`buildrail init` scaffolds an empty `.buildrail/skills/` (and
+`.buildrail/pipelines/`, see `docs/pipelines.md`) for every new project;
+`buildrail init --extensions` adds it to a project that was configured
+before this capability existed. `buildrail skill create <name>`
+generates a minimal, valid, immediately-discoverable manifest plus a
+runnable `skill.py` stub — the same scaffolding function backs both the
+CLI command and the local HTTP service's `POST /skills` endpoint (which
+only ever accepts structured `name`/`description`/`requires_provider`
+fields, never source code, and renders the manifest with `yaml.safe_dump`
+rather than string interpolation).
+
+### 10.1 Precedence
+
+A project-local skill sharing a built-in skill's name is a **discovery
+error**, not a silent override: `SkillRegistry` raises
+`DuplicateSkillError` naming both locations, and `buildrail skill list`/
+`buildrail run <pipeline>` fail clearly rather than picking one
+silently. Two project-local skills sharing a name are rejected the same
+way. There is no override/replace semantics in this version of Buildrail
+— that keeps discovery behavior safe and predictable rather than
+depending on search-path ordering a reader can't see at a glance.
+
+### 10.2 Trust
+
+**Project-local skills execute code from the repository they're found
+in.** Buildrail does not sandbox them — they run in-process with the
+same privileges as any other skill (§1's phasing note still applies:
+no subprocess boundary exists yet for any skill, built-in or
+project-local). This is not a third-party plugin mechanism and must
+never be presented as one: only use project-local skills from
+repositories you trust, exactly as you would trust any other code
+checked into that repository. §9's "not yet sandboxed" caveat applies
+here with equal force, not less.

@@ -101,16 +101,33 @@ frontend.
 
 Overview, Runs (list + detail, with client-side search/filter/sort), Artifacts
 (list with client-side search/filter/sort; a Markdown/Mermaid/JSON/plain-text
-viewer with a resizable metadata panel), Skills, Pipelines (with execution
-forms for `pre-commit` and `project-intelligence`), Project Intelligence
-(renders the latest `architecture-summary` JSON artifact, plus an
-independent Dependency Audit section rendering the latest `dependency-audit`
-JSON artifact — dependency counts, possible declaration/import mismatches,
-local/VCS/URL dependencies, and warnings, with no security-alert styling
-since it is a declaration audit, not a vulnerability scanner), and a
-Settings page (read-only project/config info, a keyboard-shortcuts
-reference, and a reset-layout action). See `README.md` for the
-command-by-command summary.
+viewer with a resizable metadata panel), Skills (built-in and project-local,
+with a source filter and a "New Skill" form), Pipelines (built-in and
+project-local, with a source filter, execution forms for `pre-commit` and
+`project-intelligence`, a generic "Run" for any project-local pipeline, and a
+"New Pipeline" form with an ordered, reorderable skill/condition step list),
+Project Intelligence (renders the latest `architecture-summary` JSON artifact,
+plus an independent Dependency Audit section rendering the latest
+`dependency-audit` JSON artifact — dependency counts, possible
+declaration/import mismatches, local/VCS/URL dependencies, and warnings, with
+no security-alert styling since it is a declaration audit, not a
+vulnerability scanner), and a Settings page (read-only project/config info, a
+"Project Extensions" built-in-vs-project-local skill/pipeline count, a
+keyboard-shortcuts reference, and a reset-layout action). See `README.md` for
+the command-by-command summary and `docs/skills.md`/`docs/pipelines.md` for
+what a project-local skill/pipeline actually is.
+
+### Creating Project-Local Skills and Pipelines
+
+The "New Skill" and "New Pipeline" forms on the Skills and Pipelines pages
+call `POST /skills` and `POST /pipelines` — the exact same narrowly-scoped
+scaffolding functions `buildrail skill create`/`buildrail pipeline create`
+use (`buildrail.skills.scaffold`/`buildrail.pipeline.scaffold`). Neither
+endpoint accepts source code, a file path, or raw YAML: a skill request is
+just `name`/`description`/`requires_provider`; a pipeline request is
+`name`/`description`/an ordered list of `{skill, condition}` steps, rendered
+into YAML server-side with `yaml.safe_dump`. There is no code editor and no
+YAML editor in the frontend — creation is scaffold-only, matching the CLI.
 
 ## Keyboard Shortcuts & Command Palette
 
@@ -188,6 +205,10 @@ are all deliberately out of scope for this slice; see `docs/roadmap.md`.
 
 - Read-only: no artifact editing/deletion, no writing `buildrail.toml` from
   the UI.
+- Project-local skills and pipelines can only be created from the frontend,
+  not deleted, updated, or edited — matching the CLI and service, which have
+  no delete/update endpoints yet either (`docs/pipelines.md`, `docs/skills.md`
+  §10). Remove or edit them directly under `.buildrail/` in the meantime.
 - No live updates — every view fetches on load/navigation; there is no
   polling, WebSocket, or background refresh. Use a page's own re-run/reload
   action to see new data.

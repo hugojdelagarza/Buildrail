@@ -1,0 +1,13 @@
+name: hello-buildrail
+version: 0.1.0
+protocol_version: "1.0"
+description: A tiny example project-local skill — copy this into .buildrail/skills/ to try it.
+entrypoint: "python skill.py"
+
+inputs: []
+
+outputs:
+  - name: summary
+    artifact_type: hello-buildrail
+
+requires_provider: false

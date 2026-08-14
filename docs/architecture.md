@@ -107,6 +107,11 @@ internals or a specific provider's SDK.
   and never hold provider credentials directly. Full spec, including
   the manifest format and the execution model tradeoffs considered:
   `docs/skills.md`.
+- A project may also define its own skills and pipelines under
+  `.buildrail/skills/`/`.buildrail/pipelines/`, discovered alongside the
+  built-in ones — same manifest, same protocol, trusted repository code
+  rather than a sandboxed plugin mechanism: `docs/skills.md` §10,
+  `docs/pipelines.md`.
 
 ### 3.4 Provider Gateway (AI abstraction)
 

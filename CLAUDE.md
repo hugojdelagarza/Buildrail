@@ -13,14 +13,15 @@ as a requirement.
 See `docs/architecture.md` for the full design and `docs/roadmap.md` for
 sequencing. `docs/milestone-1.md` is the current unit of work. The full
 engineering specification — `docs/artifacts.md`, `docs/skills.md`,
-`docs/provider-interface.md`, `docs/testing.md`, `docs/project-layout.md`,
-`docs/engineering-principles.md` — is binding wherever it's more specific
-than this file. `docs/git-workflow.md` covers commit/branch/release
-conventions, and `CONTRIBUTING.md` covers the day-to-day dev workflow.
+`docs/pipelines.md`, `docs/provider-interface.md`, `docs/testing.md`,
+`docs/project-layout.md`, `docs/engineering-principles.md` — is binding
+wherever it's more specific than this file. `docs/git-workflow.md` covers
+commit/branch/release conventions, and `CONTRIBUTING.md` covers the
+day-to-day dev workflow.
 
 ## Project Status
 
-Milestone 1 and roadmap Phases 0–3 and 6 are complete; see
+Milestone 1 and roadmap Phases 0–3, 6, and 9 are complete; see
 `docs/roadmap.md` for full phase-by-phase status (including what's
 `Not started`/`Deferred`) and `docs/milestone-1.md` for Milestone 1's
 original scope and acceptance criteria. Do not add dependencies beyond
@@ -44,7 +45,15 @@ when one changes or a milestone completes; it's a snapshot, not a log:
 - Built-in skills: `review-diff`, `test-summary`, `release-notes`,
   `verify-project`, `explain-project`, `generate-docs`,
   `generate-diagram`, `dependency-audit`.
-- Named pipelines: `pre-commit`, `project-intelligence`.
+- Named pipelines: `pre-commit`, `project-intelligence` (built-in,
+  code-backed).
+- Every project also gets `.buildrail/skills/` and `.buildrail/pipelines/`
+  (scaffolded by `buildrail init`) for project-local skills and
+  declarative pipelines, discovered alongside built-ins by one shared
+  `SkillRegistry`/`PipelineRegistry` — a project-local name colliding
+  with a built-in fails discovery, it never silently overrides. Trusted
+  repository code, not a sandboxed or community plugin mechanism
+  (`docs/skills.md` §10, `docs/pipelines.md`).
 - Generated outputs are typed artifacts, written under `artifact_root`
   and browsable via `buildrail runs`/`buildrail artifacts`.
 - A local HTTP service (`buildrail serve`) and a React/Vite dashboard

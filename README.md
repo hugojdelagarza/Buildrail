@@ -9,15 +9,16 @@ of truth. Pipelines, skills, and workflows run locally by default; AI
 providers and cloud services are optional, swappable backends rather than
 hard requirements.
 
-> **Status:** Phases 0–3 and 6 are complete: CLI, Core Engine,
+> **Status:** Phases 0–3, 6, and 9 are complete: CLI, Core Engine,
 > configuration, Provider Gateway (Fake + Anthropic adapters), a
-> manifest-driven Skill Registry (eight built-in skills), the Artifact
-> Store/Reader, Git hook management, and named pipelines
-> (`buildrail run pre-commit`, `buildrail run project-intelligence`) are
-> all implemented — plus a local HTTP service and dashboard
-> (`buildrail serve`) and a dependency audit (`buildrail dependency-audit`)
-> that go beyond the original roadmap. See
-> [docs/roadmap.md](docs/roadmap.md) for phase status and what's next.
+> manifest-driven Skill Registry, the Artifact Store/Reader, Git hook
+> management, named pipelines (`buildrail run pre-commit`,
+> `buildrail run project-intelligence`), and project-local skills/pipelines
+> (`buildrail skill create`, `buildrail pipeline create`) are all
+> implemented — plus a local HTTP service and dashboard (`buildrail serve`)
+> and a dependency audit (`buildrail dependency-audit`) that go beyond the
+> original roadmap. See [docs/roadmap.md](docs/roadmap.md) for phase status
+> and what's next.
 
 ## Why Buildrail
 
@@ -173,6 +174,51 @@ between declared dependencies and observed imports are reported as
 conservative, uncertain observations — never as confident "unused" or
 "missing" claims.
 
+### Project-Local Skills and Pipelines
+
+Every project gets its own extension points — `buildrail init` scaffolds
+empty `.buildrail/skills/` and `.buildrail/pipelines/` directories (an
+already-configured project can add them with `buildrail init --extensions`).
+Scaffold a new skill or pipeline, then discover and run it exactly like
+a built-in:
+
+```
+buildrail skill create my-skill
+buildrail pipeline create quality
+buildrail run quality
+```
+
+A project-local skill (`.buildrail/skills/<name>/skill.yaml` + `skill.py`)
+uses the exact same manifest and `SkillRequest`/`SkillResponse` protocol
+as a built-in skill — there is no second format. A project-local pipeline
+(`.buildrail/pipelines/<name>.yaml`) is a small declarative YAML file: an
+ordered list of existing skill names, each with an optional `condition`
+(`always` or `changes_exist`) and `inputs`:
+
+```yaml
+name: quality
+version: 0.1.0
+description: Verify and review the current project
+
+steps:
+  - skill: verify-project
+  - skill: review-diff
+    condition: changes_exist
+```
+
+No DAGs, loops, variables, templating, or parallel steps — see
+[docs/pipelines.md](docs/pipelines.md) for the full manifest format and
+what's intentionally not supported yet. A project-local skill or pipeline
+sharing a built-in's name is a discovery error, never a silent override.
+
+**Project-local skills execute code from the repository they're found
+in.** Buildrail does not sandbox them — only use project-local skills
+from repositories you trust. See
+[docs/skills.md](docs/skills.md) §10 for the full trust model.
+
+`examples/project-local/` has a minimal example skill and pipeline to
+copy in and try (never auto-discovered on its own).
+
 ### Git Pre-Commit Hook
 
 `buildrail hooks install` adds a local Git pre-commit hook that runs
@@ -193,14 +239,24 @@ hook only — it does not add a pre-push hook or any CI workflow. The
 installed hook still runs `buildrail verify` for now, not the
 pre-commit pipeline above.
 
-### Discovering Skills
+### Discovering Skills and Pipelines
 
-Built-in skills are discovered by the Skill Registry, not hardcoded.
-List what's available, or inspect one skill's manifest:
+Built-in and project-local skills are discovered by the Skill Registry
+together, not hardcoded. List what's available (each shown with its
+source), or inspect one skill's manifest:
 
 ```
 buildrail skill list
 buildrail skill inspect review-diff
+```
+
+Pipelines work the same way, through the Pipeline Registry — built-in
+(`pre-commit`, `project-intelligence`) and project-local pipelines
+listed and inspected together:
+
+```
+buildrail pipeline list
+buildrail pipeline inspect quality
 ```
 
 ### Browsing Runs and Artifacts
@@ -272,7 +328,8 @@ desktop-specific limitations.
 - [docs/frontend.md](docs/frontend.md) — the local dashboard: architecture boundary, dev setup, limitations.
 - [docs/milestone-1.md](docs/milestone-1.md) — the current milestone's scope.
 - [docs/artifacts.md](docs/artifacts.md) — the artifact model: lifecycle, storage, versioning.
-- [docs/skills.md](docs/skills.md) — the skill specification: manifest, execution model, protocol.
+- [docs/skills.md](docs/skills.md) — the skill specification: manifest, execution model, protocol, project-local skills.
+- [docs/pipelines.md](docs/pipelines.md) — built-in vs. project-local pipelines, manifest format, conditions.
 - [docs/provider-interface.md](docs/provider-interface.md) — the Provider Gateway contract.
 - [docs/testing.md](docs/testing.md) — testing strategy and offline-by-default rule.
 - [docs/project-layout.md](docs/project-layout.md) — full directory ownership and dependency rules.
@@ -294,9 +351,14 @@ buildrail/
 │   └── src-tauri/  # optional minimal Tauri shell that hosts the same frontend natively
 ├── tests/      # test suite
 ├── artifacts/  # generated output (reviews, docs, test reports, etc.) — git-ignored
-├── examples/   # standalone reference material not part of the app (e.g. Claude Code status-line template)
+├── examples/   # standalone reference material not part of the app, including
+│               #   project-local/ (example project-local skill + pipeline)
 └── docs/       # design and planning documents
 ```
+
+A project you run Buildrail *against* gets its own `.buildrail/skills/`
+and `.buildrail/pipelines/` (created by `buildrail init`) — that
+directory belongs to the project, not to this repository.
 
 See [docs/project-layout.md](docs/project-layout.md) for full directory
 ownership and dependency rules, and

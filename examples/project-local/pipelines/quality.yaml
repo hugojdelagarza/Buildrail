@@ -1,0 +1,9 @@
+name: quality
+version: 0.1.0
+description: Example project-local pipeline — copy this into .buildrail/pipelines/ to try it.
+
+steps:
+  - skill: verify-project
+
+  - skill: review-diff
+    condition: changes_exist

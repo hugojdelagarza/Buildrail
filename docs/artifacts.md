@@ -89,7 +89,12 @@ artifacts/
 - `run.json` — indexes every artifact produced in the run (id, type,
   path, status) so a reader (CLI, and later a UI/API) doesn't need to
   scan the directory or parse every sidecar file just to list what a run
-  produced.
+  produced. For a named-pipeline run (`docs/roadmap.md` Phase 3), it also
+  records `pipeline` (the pipeline's name), `pipeline_source`
+  (`"built-in"` or `"project-local"`, `docs/pipelines.md`), ordered
+  `pipeline_steps` (name, status, skip reason, artifact ids),
+  `duration_seconds`, and `provider_usage_totals` — all omitted, not
+  `null`, for a single-skill run that isn't part of a named pipeline.
 
 **Why files-plus-JSON instead of a database:** a SQLite (or similar)
 index would make cross-run queries ("find all reviews for file X across
