@@ -11,6 +11,10 @@ import type {
   CommandsResponse,
   ConfigResponse,
   ConfigUpdateRequest,
+  CreatePipelineRequest,
+  CreatePipelineResponse,
+  CreateSkillRequest,
+  CreateSkillResponse,
   HealthResponse,
   PipelinesResponse,
   ProjectResponse,
@@ -133,4 +137,10 @@ export const api = {
       signal,
       timeoutMs: COMMAND_TIMEOUT_MS,
     }),
+  // Both scaffold requests below map to validated, structured server-side
+  // models — never arbitrary source, YAML, or filesystem paths.
+  createSkill: (fields: CreateSkillRequest, signal?: AbortSignal) =>
+    request<CreateSkillResponse>('/skills', { method: 'POST', body: fields, signal }),
+  createPipeline: (fields: CreatePipelineRequest, signal?: AbortSignal) =>
+    request<CreatePipelineResponse>('/pipelines', { method: 'POST', body: fields, signal }),
 }

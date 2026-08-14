@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mockApi } from '../test/mockApi'
 import { LAYOUT_RESET_EVENT } from '../hooks/useResizableWidth'
@@ -29,7 +30,11 @@ const SETTINGS_MOCKS = {
       provider: 'fake',
       provider_ready: true,
       skill_count: 7,
+      skill_count_built_in: 6,
+      skill_count_project_local: 1,
       pipeline_count: 2,
+      pipeline_count_built_in: 2,
+      pipeline_count_project_local: 0,
       recent_run_count: 0,
       latest_run: null,
       statistics: null,
@@ -72,7 +77,11 @@ describe('SettingsPage', () => {
           provider: 'anthropic',
           provider_ready: true,
           skill_count: 7,
+          skill_count_built_in: 6,
+          skill_count_project_local: 1,
           pipeline_count: 2,
+          pipeline_count_built_in: 2,
+          pipeline_count_project_local: 0,
           recent_run_count: 0,
           latest_run: null,
           statistics: null,
@@ -88,7 +97,7 @@ describe('SettingsPage', () => {
       },
     })
 
-    render(<SettingsPage />)
+    render(<SettingsPage />, { wrapper: MemoryRouter })
 
     expect(await screen.findByText('Available')).toBeInTheDocument()
     const rendered = document.body.textContent ?? ''
@@ -117,7 +126,11 @@ describe('SettingsPage', () => {
           provider: null,
           provider_ready: false,
           skill_count: 7,
+          skill_count_built_in: 6,
+          skill_count_project_local: 1,
           pipeline_count: 2,
+          pipeline_count_built_in: 2,
+          pipeline_count_project_local: 0,
           recent_run_count: 0,
           latest_run: null,
           statistics: null,
@@ -133,7 +146,7 @@ describe('SettingsPage', () => {
       },
     })
 
-    render(<SettingsPage />)
+    render(<SettingsPage />, { wrapper: MemoryRouter })
 
     expect(await screen.findByText('Missing')).toBeInTheDocument()
   })
@@ -141,7 +154,7 @@ describe('SettingsPage', () => {
   it('lists keyboard shortcuts', async () => {
     mockApi(SETTINGS_MOCKS)
 
-    render(<SettingsPage />)
+    render(<SettingsPage />, { wrapper: MemoryRouter })
 
     expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument()
     expect(screen.getByText('Ctrl K')).toBeInTheDocument()
@@ -155,7 +168,7 @@ describe('SettingsPage', () => {
     const listener = vi.fn()
     window.addEventListener(LAYOUT_RESET_EVENT, listener)
 
-    render(<SettingsPage />)
+    render(<SettingsPage />, { wrapper: MemoryRouter })
     await screen.findByText('Keyboard Shortcuts')
 
     await user.click(screen.getByRole('button', { name: 'Reset layout' }))
@@ -169,7 +182,7 @@ describe('SettingsPage', () => {
   it('does not show the desktop note in a plain browser', async () => {
     mockApi(SETTINGS_MOCKS)
 
-    render(<SettingsPage />)
+    render(<SettingsPage />, { wrapper: MemoryRouter })
 
     await screen.findByText('Keyboard Shortcuts')
     expect(screen.queryByText(/Running as a desktop app/)).not.toBeInTheDocument()
@@ -179,7 +192,7 @@ describe('SettingsPage', () => {
     isTauriMock.mockReturnValue(true)
     mockApi(SETTINGS_MOCKS)
 
-    render(<SettingsPage />)
+    render(<SettingsPage />, { wrapper: MemoryRouter })
 
     expect(await screen.findByText(/Running as a desktop app/)).toBeInTheDocument()
   })
@@ -187,12 +200,22 @@ describe('SettingsPage', () => {
   it('reads the current project configuration', async () => {
     mockApi(SETTINGS_MOCKS)
 
-    render(<SettingsPage />)
+    render(<SettingsPage />, { wrapper: MemoryRouter })
 
     expect(await screen.findByText('Project Configuration')).toBeInTheDocument()
     expect(screen.getByText('fake')).toBeInTheDocument()
     expect(screen.getByText('artifacts')).toBeInTheDocument()
     expect(screen.getByText('Available')).toBeInTheDocument()
+  })
+
+  it('shows a built-in vs. project-local breakdown for skills and pipelines', async () => {
+    mockApi(SETTINGS_MOCKS)
+
+    render(<SettingsPage />, { wrapper: MemoryRouter })
+
+    expect(await screen.findByText('Project Extensions')).toBeInTheDocument()
+    expect(screen.getByText('1 project / 6 built-in')).toBeInTheDocument()
+    expect(screen.getByText('0 project / 2 built-in')).toBeInTheDocument()
   })
 
   it('edits configuration through the same endpoint onboarding uses', async () => {
@@ -230,7 +253,7 @@ describe('SettingsPage', () => {
     )
     const user = userEvent.setup()
 
-    render(<SettingsPage />)
+    render(<SettingsPage />, { wrapper: MemoryRouter })
     await user.click(await screen.findByRole('button', { name: 'Edit configuration' }))
     await user.click(screen.getByRole('radio', { name: /Anthropic/ }))
     await user.click(screen.getByRole('button', { name: 'Save configuration' }))
@@ -249,7 +272,7 @@ describe('SettingsPage', () => {
     })
     const user = userEvent.setup()
 
-    render(<SettingsPage />)
+    render(<SettingsPage />, { wrapper: MemoryRouter })
     await user.click(await screen.findByRole('button', { name: 'Edit configuration' }))
     await user.click(screen.getByRole('button', { name: 'Save configuration' }))
 
@@ -261,7 +284,7 @@ describe('SettingsPage', () => {
     mockApi(SETTINGS_MOCKS)
     const user = userEvent.setup()
 
-    render(<SettingsPage />)
+    render(<SettingsPage />, { wrapper: MemoryRouter })
     await user.click(await screen.findByRole('button', { name: 'Edit configuration' }))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 

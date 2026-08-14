@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAsync } from '../hooks/useAsync'
 import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
@@ -80,6 +81,29 @@ export function SettingsPage() {
           <code>buildrail serve</code> — it does not launch or manage that process for you.
         </p>
       )}
+
+      <div className={shared.section}>
+        <h2 className={shared.sectionTitle}>Project Extensions</h2>
+        <div className={`${shared.card} ${shared.metaGrid}`}>
+          <span className={shared.metaLabel}>Skills</span>
+          <span>
+            <Link to="/skills">
+              {project.skill_count_project_local} project / {project.skill_count_built_in} built-in
+            </Link>
+          </span>
+          <span className={shared.metaLabel}>Pipelines</span>
+          <span>
+            <Link to="/pipelines">
+              {project.pipeline_count_project_local} project / {project.pipeline_count_built_in}{' '}
+              built-in
+            </Link>
+          </span>
+        </div>
+        <p className={shared.pageSubtitle}>
+          Project-local skills and pipelines live under <code>.buildrail/</code> and execute code
+          from this repository — only use them in repositories you trust.
+        </p>
+      </div>
 
       <div className={shared.section}>
         <h2 className={shared.sectionTitle}>Project Configuration</h2>

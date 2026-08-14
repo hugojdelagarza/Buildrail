@@ -1,34 +1,72 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
-import type { PipelineDescriptor } from '../api/types'
+import type { ExtensionSource, PipelineDescriptor } from '../api/types'
 import { useAsync } from '../hooks/useAsync'
 import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
+import { CreatePipelineModal } from '../components/CreatePipelineModal'
+import { SourceBadge } from '../components/SourceBadge'
 import { StatusBadge } from '../components/StatusBadge'
 import shared from '../styles/shared.module.css'
 import layout from '../styles/listDetail.module.css'
+
+type SourceFilter = 'all' | ExtensionSource
 
 export function PipelinesPage() {
   const fetchPipelines = useCallback((signal: AbortSignal) => api.pipelines(signal), [])
   const { data, error, loading, reload } = useAsync(fetchPipelines, [])
   useRegisterRefresh(reload)
   const [selected, setSelected] = useState<string | null>(null)
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
+  const [creating, setCreating] = useState(false)
+  const [createdMessage, setCreatedMessage] = useState<string | null>(null)
+
+  const filtered = useMemo(() => {
+    const pipelines = data?.pipelines ?? []
+    if (sourceFilter === 'all') return pipelines
+    return pipelines.filter((pipeline) => pipeline.source === sourceFilter)
+  }, [data, sourceFilter])
 
   if (loading) return <p className={shared.loadingState}>Loading pipelines…</p>
   if (error || !data) return <p className={shared.errorState}>{error}</p>
 
   const active: PipelineDescriptor | undefined =
-    data.pipelines.find((pipeline) => pipeline.name === selected) ?? data.pipelines[0]
+    filtered.find((pipeline) => pipeline.name === selected) ?? filtered[0]
 
   return (
     <div className={shared.page}>
       <div className={shared.pageHeader}>
         <h1 className={shared.pageTitle}>Pipelines</h1>
+        <button
+          type="button"
+          className={shared.buttonPrimary}
+          onClick={() => {
+            setCreatedMessage(null)
+            setCreating(true)
+          }}
+        >
+          New Pipeline
+        </button>
       </div>
+
+      <div className={shared.buttonRow}>
+        {(['all', 'built-in', 'project-local'] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={sourceFilter === option ? shared.buttonPrimary : shared.button}
+            onClick={() => setSourceFilter(option)}
+          >
+            {option === 'all' ? 'All' : option === 'built-in' ? 'Built-in' : 'Project'}
+          </button>
+        ))}
+      </div>
+
+      {createdMessage && <p className={shared.pageSubtitle}>Created at {createdMessage}.</p>}
 
       <div className={layout.split}>
         <ul className={layout.list}>
-          {data.pipelines.map((pipeline) => (
+          {filtered.map((pipeline) => (
             <li key={pipeline.name}>
               <button
                 type="button"
@@ -36,6 +74,9 @@ export function PipelinesPage() {
                 onClick={() => setSelected(pipeline.name)}
               >
                 {pipeline.display_name}
+                <span className={layout.itemMeta}>
+                  <SourceBadge source={pipeline.source} />
+                </span>
               </button>
             </li>
           ))}
@@ -43,6 +84,17 @@ export function PipelinesPage() {
 
         {active && <PipelineDetail pipeline={active} />}
       </div>
+
+      {creating && (
+        <CreatePipelineModal
+          onClose={() => setCreating(false)}
+          onCreated={(path) => {
+            setCreating(false)
+            setCreatedMessage(path)
+            reload()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -94,6 +146,19 @@ function PipelineDetail({ pipeline }: { pipeline: PipelineDescriptor }) {
     <div className={`${shared.card} ${layout.detail}`}>
       <h2 className={shared.pageTitle}>{pipeline.display_name}</h2>
       <p>{pipeline.description}</p>
+      <div className={shared.metaGrid}>
+        <span className={shared.metaLabel}>Version</span>
+        <span>{pipeline.version}</span>
+        <span className={shared.metaLabel}>Source</span>
+        <span>
+          <SourceBadge source={pipeline.source} />
+          {pipeline.project_relative_path && (
+            <span className={shared.mono}> {pipeline.project_relative_path}</span>
+          )}
+        </span>
+        <span className={shared.metaLabel}>Requires provider</span>
+        <span>{pipeline.requires_provider ? 'Yes' : 'No'}</span>
+      </div>
 
       <div className={shared.section}>
         <h3 className={shared.sectionTitle}>Steps</h3>
@@ -103,14 +168,22 @@ function PipelineDetail({ pipeline }: { pipeline: PipelineDescriptor }) {
               <th>Step</th>
               <th>Skippable</th>
               <th>Condition</th>
+              <th>Inputs</th>
             </tr>
           </thead>
           <tbody>
-            {pipeline.steps.map((step) => (
-              <tr key={step.name}>
+            {pipeline.steps.map((step, index) => (
+              <tr key={`${step.name}-${index}`}>
                 <td>{step.name}</td>
                 <td>{step.skippable ? 'Yes' : 'No'}</td>
                 <td>{step.skip_condition ?? '—'}</td>
+                <td className={shared.mono}>
+                  {Object.keys(step.inputs).length === 0
+                    ? '—'
+                    : Object.entries(step.inputs)
+                        .map(([key, value]) => `${key}=${value}`)
+                        .join(', ')}
+                </td>
               </tr>
             ))}
           </tbody>

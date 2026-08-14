@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAsync } from '../hooks/useAsync'
 import { useRegisterRefresh } from '../hooks/useRefreshRegistry'
+import { SourceBadge } from '../components/SourceBadge'
 import { StatusBadge } from '../components/StatusBadge'
 import shared from '../styles/shared.module.css'
 
@@ -21,7 +22,14 @@ export function RunDetailPage() {
         <div>
           <h1 className={shared.pageTitle}>Run {run.run_id}</h1>
           <p className={shared.pageSubtitle}>
-            {run.pipeline ?? 'Single skill'} · {run.created_at ?? 'unknown time'}
+            {run.pipeline ?? 'Single skill'}
+            {run.pipeline_source && (
+              <>
+                {' '}
+                <SourceBadge source={run.pipeline_source} />
+              </>
+            )}{' '}
+            · {run.created_at ?? 'unknown time'}
           </p>
         </div>
         <StatusBadge status={run.status} />

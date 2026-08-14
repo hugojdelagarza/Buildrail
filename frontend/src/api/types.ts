@@ -50,12 +50,18 @@ export interface SkillManifestOutput {
   artifact_type: string
 }
 
+export type ExtensionSource = 'built-in' | 'project-local'
+
 export interface SkillManifest {
   name: string
   version: string
   protocol_version: string
   description: string
   requires_provider: boolean
+  source: ExtensionSource
+  // POSIX path relative to the project root (e.g. ".buildrail/skills/example");
+  // null for built-in skills. Never a full local filesystem path.
+  project_relative_path: string | null
   inputs: SkillManifestInput[]
   outputs: SkillManifestOutput[]
 }
@@ -68,12 +74,18 @@ export interface PipelineStep {
   name: string
   skippable: boolean
   skip_condition: string | null
+  inputs: Record<string, string | boolean | number>
 }
 
 export interface PipelineDescriptor {
   name: string
+  version: string
   display_name: string
   description: string
+  source: ExtensionSource
+  execution_kind: 'code' | 'declarative'
+  // POSIX path relative to the project root; null for built-in pipelines.
+  project_relative_path: string | null
   steps: PipelineStep[]
   requires_provider: boolean
   arguments: CommandArgument[]
@@ -81,6 +93,32 @@ export interface PipelineDescriptor {
 
 export interface PipelinesResponse {
   pipelines: PipelineDescriptor[]
+}
+
+// POST /skills — a narrowly-scoped scaffold request. The server generates
+// the skill.yaml/skill.py template; this never carries source code.
+export interface CreateSkillRequest {
+  name: string
+  description?: string
+  requires_provider?: boolean
+}
+
+export interface CreateSkillResponse {
+  name: string
+  project_relative_path: string
+}
+
+// POST /pipelines — a narrowly-scoped scaffold request. The server renders
+// validated YAML from these fields; this never carries raw YAML.
+export interface CreatePipelineRequest {
+  name: string
+  description?: string
+  steps?: { skill: string; condition?: 'always' | 'changes_exist' }[]
+}
+
+export interface CreatePipelineResponse {
+  name: string
+  project_relative_path: string
 }
 
 export interface ProviderUsage {
@@ -98,6 +136,7 @@ export interface RunSummary {
   artifact_count: number
   artifact_types: string[]
   pipeline: string | null
+  pipeline_source: ExtensionSource | null
 }
 
 export interface RunsResponse {
@@ -132,6 +171,7 @@ export interface RunDetail {
   status: string
   created_at: string | null
   pipeline: string | null
+  pipeline_source: ExtensionSource | null
   duration_seconds: number | null
   pipeline_steps: PipelineStepStatus[]
   artifacts: ArtifactDetail[]
@@ -151,7 +191,11 @@ export interface ProjectResponse {
   provider: string | null
   provider_ready: boolean
   skill_count: number
+  skill_count_built_in: number
+  skill_count_project_local: number
   pipeline_count: number
+  pipeline_count_built_in: number
+  pipeline_count_project_local: number
   recent_run_count: number
   latest_run: RunSummary | null
   statistics: ProjectStatistics | null
