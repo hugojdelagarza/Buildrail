@@ -9,6 +9,7 @@ import { RunDetailPage } from './pages/RunDetailPage'
 import { RunsPage } from './pages/RunsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SkillsPage } from './pages/SkillsPage'
+import { TestingPage } from './pages/TestingPage'
 
 export function App() {
   return (
@@ -21,6 +22,7 @@ export function App() {
         <Route path="pipelines" element={<PipelinesPage />} />
         <Route path="artifacts" element={<ArtifactsPage />} />
         <Route path="artifacts/*" element={<ArtifactViewPage />} />
+        <Route path="testing" element={<TestingPage />} />
         <Route path="project-intelligence" element={<ProjectIntelligencePage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

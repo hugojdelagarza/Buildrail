@@ -43,7 +43,7 @@ def test_version_works_without_a_configured_project(tmp_path: Path) -> None:
     assert status == 200
 
 
-def test_commands_lists_all_seven_executable_commands(tmp_path: Path) -> None:
+def test_commands_lists_all_eight_executable_commands(tmp_path: Path) -> None:
     status, body = dispatch("GET", "/commands", {}, tmp_path)
 
     assert status == 200
@@ -54,6 +54,7 @@ def test_commands_lists_all_seven_executable_commands(tmp_path: Path) -> None:
         "docs",
         "diagram",
         "verify",
+        "test",
         "pre-commit",
         "project-intelligence",
     }
@@ -122,7 +123,7 @@ def test_pipelines_returns_pre_commit_and_project_intelligence(tmp_path: Path) -
 
     assert status == 200
     names = {p["name"] for p in body["pipelines"]}
-    assert names == {"pre-commit", "project-intelligence"}
+    assert names == {"pre-commit", "project-intelligence", "quality-gate"}
     pre_commit = next(p for p in body["pipelines"] if p["name"] == "pre-commit")
     step_names = [s["name"] for s in pre_commit["steps"]]
     assert step_names == ["verify-project", "review-diff"]
@@ -165,10 +166,10 @@ def test_project_reports_built_in_and_project_local_extension_counts(tmp_path: P
     status, body = dispatch("GET", "/project", {}, tmp_path)
 
     assert status == 200
-    assert body["skill_count_built_in"] == 8
+    assert body["skill_count_built_in"] == 9
     assert body["skill_count_project_local"] == 1
-    assert body["skill_count"] == 9
-    assert body["pipeline_count_built_in"] == 2
+    assert body["skill_count"] == 10
+    assert body["pipeline_count_built_in"] == 3
     assert body["pipeline_count_project_local"] == 0
 
 
@@ -182,8 +183,8 @@ def test_project_degrades_gracefully_without_config(tmp_path: Path) -> None:
     assert body["recent_run_count"] == 0
     assert body["latest_run"] is None
     assert body["statistics"] is None
-    assert body["skill_count"] == 8
-    assert body["pipeline_count"] == 2
+    assert body["skill_count"] == 9
+    assert body["pipeline_count"] == 3
 
 
 def test_project_reports_ok_status_with_valid_config(tmp_path: Path) -> None:

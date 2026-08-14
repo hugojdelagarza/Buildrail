@@ -1,0 +1,23 @@
+name: test-report
+version: 0.1.0
+protocol_version: "1.0"
+description: Runs the project's pytest suite and produces a structured test report, with optional AI failure analysis.
+entrypoint: "python skill.py"
+
+inputs:
+  - name: analyze
+    type: string
+    required: false
+    description: "'true' to analyze failures with the configured provider, only when there are any."
+  - name: history_json
+    type: file
+    required: false
+    description: Path to a pre-gathered JSON file of recent runs' failing test node ids, for conservative flaky-test signals.
+
+outputs:
+  - name: report
+    artifact_type: test-report
+  - name: report_json
+    artifact_type: test-report
+
+requires_provider: false

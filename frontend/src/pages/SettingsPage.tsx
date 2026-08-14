@@ -18,6 +18,7 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: 'G then A', description: 'Go to Artifacts' },
   { keys: 'G then S', description: 'Go to Skills' },
   { keys: 'G then P', description: 'Go to Pipelines' },
+  { keys: 'G then T', description: 'Go to Testing' },
   { keys: 'G then I', description: 'Go to Project Intelligence' },
   { keys: 'G then ,', description: 'Go to Settings' },
   { keys: 'R', description: 'Refresh the current page (not while typing)' },

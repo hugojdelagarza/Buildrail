@@ -233,6 +233,100 @@ def test_test_summary_fails_without_traceback_when_config_missing(
     assert "No configuration file found" in captured.out
 
 
+def test_test_command_exits_zero_when_tests_pass(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    (tmp_path / "test_x.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["test"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "Tests PASSED" in captured.out
+
+
+def test_test_command_exits_nonzero_when_tests_fail(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    (tmp_path / "test_x.py").write_text("def test_bad():\n    assert False\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["test"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "Tests FAILED" in captured.out
+
+
+def test_test_command_analyze_uses_fake_provider(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    (tmp_path / "test_x.py").write_text("def test_bad():\n    assert False\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["test", "--analyze"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "AI failure analysis included" in captured.out
+
+
+def test_test_command_analyze_missing_provider_still_reflects_test_result(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text('artifact_root = "artifacts"\n', encoding="utf-8")
+    (tmp_path / "test_x.py").write_text("def test_bad():\n    assert False\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["test", "--analyze"])
+
+    captured = capsys.readouterr()
+    # Missing provider never flips exit code semantics — only the test result does.
+    assert exit_code == 1
+    assert "no provider is configured" in captured.out.lower()
+
+
+def test_test_command_analyze_does_not_call_provider_when_all_pass(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    (tmp_path / "buildrail.toml").write_text(
+        'provider = "fake"\nartifact_root = "artifacts"\n', encoding="utf-8"
+    )
+    (tmp_path / "test_x.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["test", "--analyze"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "AI failure analysis included" not in captured.out
+
+
+def test_test_command_fails_without_traceback_when_config_missing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["test"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "No configuration file found" in captured.out
+
+
 def test_skill_list_prints_all_built_in_skills(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = main(["skill", "list"])
 

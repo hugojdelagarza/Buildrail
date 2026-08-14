@@ -23,6 +23,19 @@ but does not execute them — `buildrail run pre-commit` and
 and their own CLI flags (`--base`/`--skip-review`,
 `--path`/`--enhance`).
 
+`quality-gate` (`verify-project` → `test-report` → `dependency-audit`)
+is also a built-in, code-registered `PipelineDefinition`, but its steps
+need none of `pre-commit`/`project-intelligence`'s bespoke behavior — no
+Git-diff gating, no shared up-front analysis — so it's registered with
+`execution_kind="declarative"` and runs through the exact same generic
+`CoreEngine.run_named_pipeline` executor as a project-local pipeline
+(§2.4), rather than getting its own `CoreEngine` method. A built-in
+pipeline being "declarative" is an implementation detail, not a
+user-visible distinction: `buildrail run quality-gate` works like any
+other named pipeline. It's named `quality-gate`, not `quality`, to
+avoid colliding with `examples/project-local/pipelines/quality.yaml`,
+the documented project-local pipeline example.
+
 ## 2. Project-Local Pipelines
 
 A project-local pipeline is one YAML file under

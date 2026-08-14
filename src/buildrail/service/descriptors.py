@@ -125,6 +125,35 @@ COMMANDS: tuple[CommandDescriptor, ...] = (
         category="quality",
     ),
     CommandDescriptor(
+        id="test",
+        display_name="Run Tests",
+        description=(
+            "Run the project's pytest suite and write a structured test report. "
+            "AI failure analysis is optional and only runs when there are failures."
+        ),
+        endpoint="/commands/test",
+        requires_provider=False,
+        accepts_arguments=True,
+        arguments=(
+            CommandArgument(
+                name="analyze",
+                type="boolean",
+                required=False,
+                description=(
+                    "Analyze failures with the configured provider, only when there are any."
+                ),
+            ),
+            CommandArgument(
+                name="history",
+                type="boolean",
+                required=False,
+                description="Include conservative possible-flaky-test signals from recent runs.",
+            ),
+        ),
+        artifact_types=("test-report",),
+        category="quality",
+    ),
+    CommandDescriptor(
         id="pre-commit",
         display_name="Run Pre-Commit",
         description="Run verify-project, then review-diff when there's a Git diff to review.",

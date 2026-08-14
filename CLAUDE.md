@@ -21,7 +21,7 @@ day-to-day dev workflow.
 
 ## Project Status
 
-Milestone 1 and roadmap Phases 0–3, 6, and 9 are complete; see
+Milestone 1 and roadmap Phases 0–3, 6, 7, and 9 are complete; see
 `docs/roadmap.md` for full phase-by-phase status (including what's
 `Not started`/`Deferred`) and `docs/milestone-1.md` for Milestone 1's
 original scope and acceptance criteria. Do not add dependencies beyond
@@ -42,11 +42,22 @@ when one changes or a milestone completes; it's a snapshot, not a log:
 - Skills are reusable and provider-neutral; built-in skills currently
   run in-process against the same request/response contract a real
   subprocess transport would use later (`docs/skills.md` §1).
-- Built-in skills: `review-diff`, `test-summary`, `release-notes`,
-  `verify-project`, `explain-project`, `generate-docs`,
+- Built-in skills: `review-diff`, `test-summary`, `test-report`,
+  `release-notes`, `verify-project`, `explain-project`, `generate-docs`,
   `generate-diagram`, `dependency-audit`.
-- Named pipelines: `pre-commit`, `project-intelligence` (built-in,
-  code-backed).
+- Named pipelines: `pre-commit`, `project-intelligence`, `quality-gate`
+  (built-in, code-backed). `quality-gate` runs verify-project, test-report,
+  and dependency-audit — named to avoid colliding with
+  `examples/project-local/pipelines/quality.yaml`, the documented example
+  of a project-local pipeline.
+- `buildrail test` is the primary testing workflow: deterministic pytest
+  execution by default (writes a `test-report` Markdown + JSON artifact),
+  with `--analyze` optionally sending failure context to the configured
+  provider — only when there are failures, never on a clean pass, and
+  never blocking the deterministic result if no provider is configured
+  (`docs/testing.md`). `test-summary` (the older, narrower AI-summary-only
+  command) still exists unchanged and now shares the same pytest executor
+  (`buildrail.testing`).
 - Every project also gets `.buildrail/skills/` and `.buildrail/pipelines/`
   (scaffolded by `buildrail init`) for project-local skills and
   declarative pipelines, discovered alongside built-ins by one shared

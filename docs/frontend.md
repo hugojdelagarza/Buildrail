@@ -111,11 +111,16 @@ plus an independent Dependency Audit section rendering the latest
 `dependency-audit` JSON artifact — dependency counts, possible
 declaration/import mismatches, local/VCS/URL dependencies, and warnings, with
 no security-alert styling since it is a declaration audit, not a
-vulnerability scanner), and a Settings page (read-only project/config info, a
-"Project Extensions" built-in-vs-project-local skill/pipeline count, a
-keyboard-shortcuts reference, and a reset-layout action). See `README.md` for
-the command-by-command summary and `docs/skills.md`/`docs/pipelines.md` for
-what a project-local skill/pipeline actually is.
+vulnerability scanner), Testing (renders the latest `test-report` JSON
+artifact — counts, failures, collection errors, possible flaky signals, and
+coverage when available — a "Run Tests" action with an optional Analyze
+checkbox that maps to `buildrail test --analyze`, a link to the full Markdown
+report artifact, and recent-run history), and a Settings page (read-only
+project/config info, a "Project Extensions" built-in-vs-project-local
+skill/pipeline count, a keyboard-shortcuts reference, and a reset-layout
+action). See `README.md` for the command-by-command summary and
+`docs/skills.md`/`docs/pipelines.md` for what a project-local skill/pipeline
+actually is.
 
 ### Creating Project-Local Skills and Pipelines
 
@@ -140,7 +145,7 @@ Page navigation entries are the one thing kept local to the frontend, since
 routes aren't part of the backend's contract.
 
 `G` then a letter navigates (`O` Overview, `R` Runs, `A` Artifacts, `S`
-Skills, `P` Pipelines, `I` Project Intelligence, `,` Settings); plain `R`
+Skills, `P` Pipelines, `I` Project Intelligence, `T` Testing, `,` Settings); plain `R`
 refreshes whatever the current page last loaded. Every shortcut is a no-op
 while focus is inside a text input, textarea, select, or contenteditable
 element, so they never interfere with typing. The full list is also always

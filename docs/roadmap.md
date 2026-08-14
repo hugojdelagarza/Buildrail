@@ -91,11 +91,30 @@ artifact.
   three, analyzing the repository once and sharing that analysis, one
   run id, and one `run.json` across every step — no re-analysis per step.
 
-## Phase 7 — Testing Workflows — **Not started**
+## Phase 7 — Testing Workflows — **Complete**
 
-- A pipeline that runs a project's tests and produces a `test-report`
-  artifact (failures, flaky signals, coverage deltas where available)
-  — no new orchestration concepts, just new skills.
+- `buildrail test` is the primary testing workflow: deterministic
+  `pytest` execution by default (a new `buildrail.testing` executor
+  parses JUnit XML plus pytest's own summary line — no new hard
+  dependency), writing a `test-report` artifact (Markdown plus a JSON
+  sidecar) with counts, failures, and collection errors.
+- `--analyze` optionally sends failure context to the configured
+  provider for a root-cause summary — only when there are failures,
+  never on a clean pass, and never blocking the deterministic result if
+  no provider is configured. `--history` compares failing node ids
+  against the immediately preceding `test-report` run and notes
+  possible flaky signals conservatively, never via an automatic rerun.
+- `coverage.xml`, if a project already has one, is read into the report;
+  Buildrail never invokes coverage tooling itself.
+- `test-summary` (the original, narrower AI-summary-only command) keeps
+  its public behavior unchanged and now shares the same executor
+  internally instead of a second pytest integration.
+- The built-in `quality-gate` pipeline composes `verify-project`,
+  `test-report`, and `dependency-audit` into one run — named
+  `quality-gate` rather than `quality` to avoid colliding with
+  `examples/project-local/pipelines/quality.yaml`, the documented
+  project-local pipeline example.
+- See `docs/testing.md` §9 for the full design rationale.
 
 ## Phase 8 — Optional Cloud/Integration Layer — **Not started**
 

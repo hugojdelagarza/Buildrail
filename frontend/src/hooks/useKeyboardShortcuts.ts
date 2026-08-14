@@ -7,6 +7,7 @@ const GO_TARGETS: Record<string, string> = {
   a: '/artifacts',
   s: '/skills',
   p: '/pipelines',
+  t: '/testing',
   i: '/project-intelligence',
   ',': '/settings',
 }

@@ -10,6 +10,7 @@ const SECTIONS = [
   { to: '/skills', label: 'Skills' },
   { to: '/pipelines', label: 'Pipelines' },
   { to: '/artifacts', label: 'Artifacts' },
+  { to: '/testing', label: 'Testing' },
   { to: '/project-intelligence', label: 'Project Intelligence' },
   { to: '/settings', label: 'Settings' },
 ]

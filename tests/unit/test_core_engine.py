@@ -1608,3 +1608,159 @@ def test_run_named_pipeline_artifacts_are_inspectable_afterward(
     artifact_id = f"{run_id}/001-verification-report-report"
     artifact_result = engine.inspect_artifact(tmp_path, artifact_id)
     assert artifact_result.success is True
+
+
+# --- test_report ---
+
+
+def test_test_report_returns_failure_result_when_config_missing(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.test_report(tmp_path)
+
+    assert result.success is False
+    assert "No configuration file found" in result.message
+
+
+def test_test_report_succeeds_when_tests_pass(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    (tmp_path / "test_x.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.test_report(tmp_path)
+
+    assert result.success is True
+    assert "Tests PASSED" in result.message
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    assert len(run_dirs) == 1
+    assert len(list(run_dirs[0].glob("001-test-report-report.md"))) == 1
+    assert (run_dirs[0] / "001-test-report-report_json.json").is_file()
+
+
+def test_test_report_reflects_actual_test_failure(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    (tmp_path / "test_x.py").write_text("def test_bad():\n    assert False\n", encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.test_report(tmp_path)
+
+    assert result.success is False
+    assert "Tests FAILED" in result.message
+
+
+def test_test_report_analyze_uses_fake_provider_on_failure(tmp_path: Path) -> None:
+    _init_config(tmp_path)
+    (tmp_path / "test_x.py").write_text("def test_bad():\n    assert False\n", encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.test_report(tmp_path, analyze=True)
+
+    assert result.success is False
+    assert "AI failure analysis included" in result.message
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    content = list(run_dirs[0].glob("001-test-report-*.md"))[0].read_text(encoding="utf-8")
+    assert "[fake response]" in content
+
+
+def test_test_report_analyze_does_not_call_provider_when_all_pass(tmp_path: Path) -> None:
+    _init_config(tmp_path)
+    (tmp_path / "test_x.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.test_report(tmp_path, analyze=True)
+
+    assert result.success is True
+    assert "AI failure analysis included" not in result.message
+
+
+def test_test_report_analyze_with_no_provider_configured_still_completes(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    (tmp_path / "test_x.py").write_text("def test_bad():\n    assert False\n", encoding="utf-8")
+    engine = CoreEngine()
+
+    result = engine.test_report(tmp_path, analyze=True)
+
+    assert result.success is False  # reflects the actual test result, not analysis availability
+    assert "no provider is configured" in result.message.lower()
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    assert len(list(run_dirs[0].glob("001-test-report-*.md"))) == 1
+
+
+def test_test_report_history_flag_surfaces_a_flaky_signal(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    (tmp_path / "test_x.py").write_text("def test_bad():\n    assert False\n", encoding="utf-8")
+    engine = CoreEngine()
+    first = engine.test_report(tmp_path)
+    assert first.success is False
+
+    (tmp_path / "test_x.py").write_text(
+        "def test_bad():\n    assert False\n\ndef test_extra():\n    assert True\n",
+        encoding="utf-8",
+    )
+    result = engine.test_report(tmp_path, history=True)
+
+    assert result.success is False
+    run_dirs = sorted((tmp_path / "artifacts").iterdir())
+    latest_json = run_dirs[-1] / "001-test-report-report_json.json"
+    data = json.loads(latest_json.read_text(encoding="utf-8"))
+    # test_bad failed in both runs, so it must NOT be flagged as flaky.
+    assert data["flaky_signals"] == []
+
+
+def test_test_report_history_does_not_leak_temp_files(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    (tmp_path / "test_x.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    engine = CoreEngine()
+
+    engine.test_report(tmp_path, history=True)
+
+    temp_dir = Path(tempfile.gettempdir())
+    leftovers = list(temp_dir.glob("buildrail-test-history-*"))
+    assert leftovers == []
+
+
+# --- quality-gate pipeline ---
+
+
+def test_quality_gate_pipeline_runs_all_three_steps(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_config(tmp_path, with_provider=False)
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "quality-gate")
+
+    assert result.success is True
+    assert "verify-project: passed" in result.message
+    assert "test-report: passed" in result.message
+    assert "dependency-audit: passed" in result.message
+
+
+def test_quality_gate_pipeline_stops_after_verify_project_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_config(tmp_path, with_provider=False)
+    _mock_verify_checks(monkeypatch, fail_check="format")
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "quality-gate")
+
+    assert result.success is False
+    assert "verify-project: failed" in result.message
+    assert "test-report: skipped" in result.message
+    assert "dependency-audit: skipped" in result.message
+
+
+def test_quality_gate_pipeline_source_is_built_in(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_config(tmp_path, with_provider=False)
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+    engine.run_named_pipeline(tmp_path, "quality-gate")
+    run_id = next((tmp_path / "artifacts").iterdir()).name
+
+    inspect_result = engine.inspect_run(tmp_path, run_id)
+
+    assert "pipeline_source: built-in" in inspect_result.message

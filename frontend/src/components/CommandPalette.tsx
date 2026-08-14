@@ -17,6 +17,7 @@ const NAV_ENTRIES: NavEntry[] = [
   { label: 'Artifacts', path: '/artifacts', shortcut: 'G A' },
   { label: 'Skills', path: '/skills', shortcut: 'G S' },
   { label: 'Pipelines', path: '/pipelines', shortcut: 'G P' },
+  { label: 'Testing', path: '/testing', shortcut: 'G T' },
   { label: 'Project Intelligence', path: '/project-intelligence', shortcut: 'G I' },
   { label: 'Settings', path: '/settings', shortcut: 'G ,' },
 ]

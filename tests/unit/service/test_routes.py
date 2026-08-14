@@ -143,6 +143,48 @@ def test_command_verify_runs_without_a_body(tmp_path: Path) -> None:
     assert isinstance(body["success"], bool)
 
 
+def test_command_test_runs_without_a_body(tmp_path: Path) -> None:
+    _init_project(tmp_path)
+    (tmp_path / "test_x.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+
+    status, body = dispatch("POST", "/commands/test", {}, tmp_path)
+
+    assert status == 200
+    assert body["success"] is True
+    assert "Tests PASSED" in body["message"]
+
+
+def test_command_test_reflects_actual_failure(tmp_path: Path) -> None:
+    _init_project(tmp_path)
+    (tmp_path / "test_x.py").write_text("def test_bad():\n    assert False\n", encoding="utf-8")
+
+    status, body = dispatch("POST", "/commands/test", {}, tmp_path)
+
+    assert status == 200
+    assert body["success"] is False
+    assert "Tests FAILED" in body["message"]
+
+
+def test_command_test_analyze_with_fake_provider(tmp_path: Path) -> None:
+    _init_project(tmp_path, with_provider=True)
+    (tmp_path / "test_x.py").write_text("def test_bad():\n    assert False\n", encoding="utf-8")
+
+    status, body = dispatch("POST", "/commands/test", {"analyze": True}, tmp_path)
+
+    assert status == 200
+    assert body["success"] is False
+    assert "AI failure analysis included" in body["message"]
+
+
+def test_command_test_rejects_non_boolean_analyze(tmp_path: Path) -> None:
+    _init_project(tmp_path)
+
+    status, body = dispatch("POST", "/commands/test", {"analyze": "yes"}, tmp_path)
+
+    assert status == 400
+    assert "error" in body
+
+
 def test_command_pre_commit_reports_failure_outside_a_git_repository(tmp_path: Path) -> None:
     _init_project(tmp_path)
 
@@ -601,6 +643,19 @@ def test_running_a_project_local_pipeline_through_commands_endpoint(
     assert status == 200
     assert body["success"] is True
     assert "Pipeline: quality" in body["message"]
+
+
+def test_running_the_built_in_quality_gate_pipeline_through_commands_endpoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_project(tmp_path, with_provider=False)
+    _mock_verify_checks_for_service(monkeypatch)
+
+    status, body = dispatch("POST", "/commands/quality-gate", {}, tmp_path)
+
+    assert status == 200
+    assert body["success"] is True
+    assert "Pipeline: quality-gate" in body["message"]
 
 
 def test_running_an_unknown_command_or_pipeline_returns_404(tmp_path: Path) -> None:

@@ -41,6 +41,7 @@ describe('CommandPalette', () => {
     expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /Overview/ })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /Runs/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Testing/ })).toBeInTheDocument()
 
     await user.type(screen.getByRole('combobox'), 'settings')
 

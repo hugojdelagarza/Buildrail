@@ -25,7 +25,7 @@ def test_no_project_root_lists_only_built_ins() -> None:
 
     names = [d.name for d in registry.list_pipelines()]
 
-    assert names == ["pre-commit", "project-intelligence"]
+    assert names == ["pre-commit", "project-intelligence", "quality-gate"]
 
 
 def test_built_ins_have_code_execution_kind_and_no_path() -> None:
@@ -45,7 +45,7 @@ def test_project_local_pipeline_is_discovered(tmp_path: Path) -> None:
 
     names = [d.name for d in registry.list_pipelines()]
 
-    assert names == ["pre-commit", "project-intelligence", "quality"]
+    assert names == ["pre-commit", "project-intelligence", "quality-gate", "quality"]
 
 
 def test_project_local_pipeline_has_declarative_execution_kind(tmp_path: Path) -> None:
@@ -130,7 +130,7 @@ def test_missing_pipelines_directory_does_not_error(tmp_path: Path) -> None:
 
     names = [d.name for d in registry.list_pipelines()]
 
-    assert names == ["pre-commit", "project-intelligence"]
+    assert names == ["pre-commit", "project-intelligence", "quality-gate"]
 
 
 def test_project_root_containing_spaces(tmp_path: Path) -> None:

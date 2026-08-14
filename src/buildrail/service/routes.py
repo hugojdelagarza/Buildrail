@@ -294,6 +294,10 @@ def _dispatch_command(
         return engine.diagram_generate(project_root, path=path, format=diagram_format)
     if name == "verify":
         return engine.verify_project(project_root)
+    if name == "test":
+        analyze = _optional_bool(body, "analyze")
+        history = _optional_bool(body, "history")
+        return engine.test_report(project_root, analyze=analyze, history=history)
     if name == "pre-commit":
         base_ref = _optional_str(body, "base")
         skip_review = _optional_bool(body, "skip_review")

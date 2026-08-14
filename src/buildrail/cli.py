@@ -45,6 +45,20 @@ def _build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("test-summary", help="Run the test suite and summarize any failures.")
 
+    test_parser = subparsers.add_parser(
+        "test", help="Run the project's pytest suite and write a structured test report."
+    )
+    test_parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Analyze failures with the configured provider (only called when there are any).",
+    )
+    test_parser.add_argument(
+        "--history",
+        action="store_true",
+        help="Include conservative possible-flaky-test signals from recent test-report runs.",
+    )
+
     release_notes_parser = subparsers.add_parser(
         "release-notes", help="Generate release notes from Git history."
     )
@@ -222,6 +236,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = engine.review(Path.cwd(), args.diff)
     elif args.command == "test-summary":
         result = engine.test_summary(Path.cwd())
+    elif args.command == "test":
+        result = engine.test_report(Path.cwd(), analyze=args.analyze, history=args.history)
     elif args.command == "release-notes":
         result = engine.release_notes(Path.cwd(), from_ref=args.from_ref, to_ref=args.to_ref)
     elif args.command == "verify":

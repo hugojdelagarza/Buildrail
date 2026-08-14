@@ -130,3 +130,56 @@ No test in `tests/unit`, `tests/integration`, `tests/e2e`, or
 `tests/golden` may instantiate a real provider adapter or require an
 environment variable holding a real credential. If a test needs that,
 it belongs in the separate `@live` conformance suite (§6), full stop.
+
+## 9. `buildrail test` — Testing as a User-Facing Feature
+
+The sections above describe how Buildrail's own suite is tested. This
+section describes `buildrail test`, the built-in workflow Buildrail
+offers for testing *any* project it runs against — implemented by
+`src/buildrail/testing/` and the `test-report` skill.
+
+**Deterministic by default, AI strictly optional.** `buildrail test`
+runs `pytest` as a subprocess and parses its JUnit XML output plus its
+final summary line into a `TestReport` (counts, individual failures,
+collection errors) — no provider call, no network, works with zero
+configuration beyond a valid `buildrail.toml`. `--analyze` is additive:
+it sends failing-test context to the configured provider for a
+root-cause summary, but only when the run actually has failures. A
+clean pass never constructs a provider, and a missing/unconfigured
+provider never blocks the deterministic report — analysis degrades to
+"not available," not a failed command.
+
+**Why hybrid parsing, not a new dependency.** JUnit XML alone can't
+distinguish `xfail` from `skipped`, or `xpass` from an ordinary pass, in
+pytest's non-strict default mode — the schema wasn't designed for
+pytest's outcome vocabulary. Rather than add `pytest-json-report` (a
+new hard dependency for something achievable without one), the runner
+also parses pytest's own deterministic one-line summary
+(`"3 passed, 1 failed in 0.12s"`-style) and reconciles the two. This
+keeps `pytest` itself as the only required test tool.
+
+**Coverage is read, never run.** If a `coverage.xml` (Cobertura format)
+already exists in the project — because the project's own test setup
+produced one — `buildrail test` reads it into the report's coverage
+summary. Buildrail never invokes `coverage.py` itself and never treats
+its absence as an error; coverage is opportunistic, not a requirement.
+
+**Flaky signals are conservative, not automatic reruns.** `--history`
+compares the current run's failing node ids against the immediately
+preceding `test-report` run (via the Artifact Store, `docs/artifacts.md`)
+and flags a test that failed now but not last time as a "possible flaky
+signal." This is a note for a human to investigate, not a verdict —
+Buildrail never reruns tests automatically to "confirm" flakiness.
+
+**One executor, two commands.** `test-summary` (the original, narrower
+AI-summary-only command from Phase 2) and `test-report`/`buildrail test`
+(Phase 7) both call the same `buildrail.testing.run_pytest` executor
+rather than maintaining two independent pytest integrations.
+`test-summary`'s public behavior is unchanged; only its internals were
+refactored to reuse the shared runner.
+
+**Composes into `quality-gate`.** The built-in `quality-gate` pipeline
+(`docs/pipelines.md`) runs `verify-project`, then `test-report`, then
+`dependency-audit` as one run — the broadest local quality check
+Buildrail offers, still fully offline unless `--analyze` is requested
+and a provider is configured.

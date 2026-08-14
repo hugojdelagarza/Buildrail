@@ -183,6 +183,63 @@ export interface ArtifactPayload extends ArtifactDetail {
   content_json: Record<string, unknown> | null
 }
 
+// The test-report skill's JSON sidecar artifact (see
+// src/buildrail/testing/models.py's TestReport).
+export interface TestCounts {
+  total: number
+  passed: number
+  failed: number
+  skipped: number
+  xfailed: number
+  xpassed: number
+  errors: number
+}
+
+export interface TestFailureEntry {
+  node_id: string
+  outcome: string
+  message: string
+}
+
+export interface CollectionErrorEntry {
+  location: string
+  message: string
+}
+
+export interface CoverageSummary {
+  source: string
+  line_rate: number
+  lines_covered: number | null
+  lines_valid: number | null
+}
+
+export interface FlakySignal {
+  node_id: string
+  note: string
+}
+
+export interface TestReport {
+  schema_version: string
+  framework: string
+  command: string[]
+  status: string
+  exit_code: number | null
+  started_at: string
+  duration_seconds: number
+  counts: TestCounts
+  failures: TestFailureEntry[]
+  collection_errors: CollectionErrorEntry[]
+  stdout_excerpt: string
+  stderr_excerpt: string
+  coverage: CoverageSummary | null
+  flaky_signals: FlakySignal[]
+  analysis_mode: string
+  analysis_text: string | null
+  analysis_model: string | null
+  analysis_input_tokens: number | null
+  analysis_output_tokens: number | null
+}
+
 export interface ProjectResponse {
   service_version: string
   project_root: string

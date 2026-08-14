@@ -41,7 +41,7 @@ from buildrail.pipeline import (
 from buildrail.pipeline import (
     create_pipeline as scaffold_pipeline,
 )
-from buildrail.pipeline.types import PipelineResult
+from buildrail.pipeline.types import PipelineResult, PipelineStepResult
 from buildrail.providers import (
     Message,
     ProviderError,
@@ -50,7 +50,7 @@ from buildrail.providers import (
     TextPart,
     create_provider,
 )
-from buildrail.skill_protocol import SkillResponse
+from buildrail.skill_protocol import SkillOutput, SkillResponse
 from buildrail.skills import (
     SkillError,
     SkillManifest,
@@ -61,6 +61,7 @@ from buildrail.skills import (
 from buildrail.skills import (
     create_skill as scaffold_skill,
 )
+from buildrail.testing import HistoryEntry, gather_recent_failure_history, history_to_dict
 
 _DOC_FILENAMES = ("project-overview.md", "module-reference.md", "development-guide.md")
 
@@ -123,6 +124,60 @@ def _verify_outcome(result: PipelineResult) -> NamedStepOutcome:
     )
 
 
+def _test_report_outcome(result: PipelineResult) -> NamedStepOutcome:
+    """Convert test-report's PipelineResult into a NamedStepOutcome.
+
+    Like verify-project, test-report's SkillResponse always reports
+    "success" for a completed run — a failing test suite is a normal
+    outcome recorded in output metadata, not a skill execution failure.
+    """
+    if not result.success or not result.steps:
+        return _outcome_from_step(result, "test-report")
+
+    step = result.steps[-1]
+    output = step.response.outputs.get("report")
+    metadata = output.metadata if output is not None and output.metadata else {}
+    passed = bool(metadata.get("passed", False))
+    status = metadata.get("status")
+    reason = None if passed else f"status: {status}" if status else "tests did not pass"
+    return NamedStepOutcome(
+        name="test-report",
+        status="passed" if passed else "failed",
+        reason=reason,
+        artifacts=step.artifacts,
+    )
+
+
+def _test_report_passed(output: SkillOutput) -> bool:
+    metadata = output.metadata or {}
+    return bool(metadata.get("passed", False))
+
+
+def _test_report_message(step: PipelineStepResult) -> str:
+    output = step.response.outputs["report"]
+    metadata = output.metadata or {}
+    status = str(metadata.get("status", "unknown")).replace("_", " ").upper()
+    counts_line = (
+        f"{metadata.get('passed_count', 0)} passed, {metadata.get('failed_count', 0)} failed, "
+        f"{metadata.get('skipped_count', 0)} skipped, {metadata.get('xfailed_count', 0)} xfailed, "
+        f"{metadata.get('xpassed_count', 0)} xpassed, {metadata.get('errors_count', 0)} errors"
+    )
+    duration = metadata.get("duration_seconds", 0.0)
+    message = f"Tests {status}: {counts_line}. Duration: {duration:.2f}s."
+
+    analysis_mode = metadata.get("analysis_mode")
+    if analysis_mode == "unavailable_no_provider":
+        message += (
+            " Analysis was requested but no provider is configured; "
+            "deterministic results are unaffected."
+        )
+    elif analysis_mode == "completed":
+        message += " AI failure analysis included."
+
+    message += f" Report written to {step.artifacts[0].content_path}."
+    return message
+
+
 def _write_temp_diff(diff_text: str) -> Path:
     """Write a collected diff to a private temp file for review-diff's file-path input."""
     fd, path_str = tempfile.mkstemp(prefix="buildrail-precommit-", suffix=".patch")
@@ -139,6 +194,16 @@ def _write_temp_analysis(analysis: ProjectAnalysis) -> Path:
     path = Path(path_str)
     with open(fd, "w", encoding="utf-8") as handle:
         json.dump(to_dict(analysis), handle)
+    return path
+
+
+def _write_temp_history(entries: tuple[HistoryEntry, ...]) -> Path:
+    """Write gathered test-report history to a private temp JSON file so the test-report
+    skill can compare its own failures against it without needing ArtifactReader access."""
+    fd, path_str = tempfile.mkstemp(prefix="buildrail-test-history-", suffix=".json")
+    path = Path(path_str)
+    with open(fd, "w", encoding="utf-8") as handle:
+        json.dump(history_to_dict(entries), handle)
     return path
 
 
@@ -537,6 +602,66 @@ class CoreEngine:
             message=f"Test summary written to {step.artifacts[0].content_path}.{usage_note}",
         )
 
+    def test_report(
+        self, project_root: Path, *, analyze: bool = False, history: bool = False
+    ) -> Result:
+        """Run the test-report skill: deterministic pytest execution first, writing a
+        Markdown + JSON test-report artifact.
+
+        `analyze=True` only ever calls the configured provider when there are
+        failures/errors to explain; a missing or misconfigured provider with
+        `analyze=True` never blocks the deterministic run — the report is
+        still produced, and its `analysis_mode` records that analysis could
+        not run. `Result.success` (and so the CLI's exit code) always
+        reflects the actual test outcome, never analysis availability — a
+        deliberate choice: `--analyze` failing to run is a degraded report,
+        not a failed command.
+        """
+        try:
+            config = load_config(project_root)
+        except ConfigError as exc:
+            return Result(success=False, message=str(exc))
+
+        store = ArtifactStore(project_root / config.artifact_root)
+        run_id = store.generate_run_id()
+
+        inputs: dict[str, str] = {"analyze": "true" if analyze else "false"}
+        history_file: Path | None = None
+        if history:
+            reader = ArtifactReader(project_root / config.artifact_root)
+            history_file = _write_temp_history(gather_recent_failure_history(reader))
+            inputs["history_json"] = str(history_file)
+
+        gateway: ProviderGateway | None = None
+        if analyze:
+            try:
+                provider = create_provider(_require_provider(config), model=config.anthropic_model)
+                gateway = ProviderGateway(provider)
+            except (ConfigError, ProviderError):
+                gateway = None  # deterministic run still proceeds; skill reports why.
+
+        try:
+            context = PipelineContext(
+                run_id=run_id,
+                workdir=str(project_root),
+                inputs=inputs,
+                provider_name=config.provider if gateway is not None else None,
+            )
+            result = PipelineRunner(gateway, store, steps=("test-report",)).run(context)
+        finally:
+            if history_file is not None:
+                history_file.unlink(missing_ok=True)
+
+        if not result.success:
+            return Result(success=False, message=result.error or "The pipeline failed.")
+
+        step = result.steps[-1]
+        output = step.response.outputs.get("report")
+        if output is None or not step.artifacts:
+            return Result(success=False, message="The test-report skill did not produce a report.")
+
+        return Result(success=_test_report_passed(output), message=_test_report_message(step))
+
     def release_notes(
         self, project_root: Path, *, from_ref: str | None = None, to_ref: str | None = None
     ) -> Result:
@@ -828,22 +953,30 @@ class CoreEngine:
             step_context = PipelineContext(
                 run_id=run_id,
                 workdir=str(project_root),
-                inputs={key: str(value) for key, value in step.inputs.items()},
+                # `repository_path` defaults to the project root so declarative steps
+                # for skills that take it explicitly (dependency-audit, explain-project,
+                # generate-docs, generate-diagram) work without every pipeline author
+                # having to repeat it; a step's own `inputs` can still override it.
+                inputs={
+                    "repository_path": str(project_root),
+                    **{key: str(value) for key, value in step.inputs.items()},
+                },
                 provider_name=config.provider if gateway is not None else None,
                 pipeline_name=definition.name,
             )
             step_result = PipelineRunner(
                 gateway, store, steps=(step.name,), registry=skill_registry
             ).run(step_context)
-            # verify-project's SkillResponse always reports "success" — a failed
-            # check is a normal outcome recorded in output metadata, not a skill
-            # execution failure (see `_verify_outcome`'s docstring). Every other
-            # skill's pass/fail is exactly its PipelineResult.success.
-            outcome = (
-                _verify_outcome(step_result)
-                if step.name == "verify-project"
-                else _outcome_from_step(step_result, step.name)
-            )
+            # verify-project's and test-report's SkillResponse always report "success" —
+            # a failed check/test suite is a normal outcome recorded in output metadata,
+            # not a skill execution failure (see `_verify_outcome`'s docstring). Every
+            # other skill's pass/fail is exactly its PipelineResult.success.
+            if step.name == "verify-project":
+                outcome = _verify_outcome(step_result)
+            elif step.name == "test-report":
+                outcome = _test_report_outcome(step_result)
+            else:
+                outcome = _outcome_from_step(step_result, step.name)
             outcomes.append(outcome)
             if outcome.status == "failed":
                 stopped = True
@@ -874,7 +1007,7 @@ class CoreEngine:
             outcomes,
             start,
             provider_usage_totals,
-            source="project-local",
+            source=definition.source,
         )
 
     def install_hook(self, project_root: Path) -> Result:

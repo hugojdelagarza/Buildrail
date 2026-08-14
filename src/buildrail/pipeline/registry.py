@@ -133,6 +133,25 @@ _BUILT_IN_PIPELINES: tuple[PipelineDefinition, ...] = (
             ),
         ),
     ),
+    PipelineDefinition(
+        name="quality-gate",
+        version="0.1.0",
+        display_name="Quality Gate",
+        description=(
+            "Runs verify-project, test-report, and dependency-audit — a fully offline local "
+            "quality gate. No provider is ever constructed. Named 'quality-gate' rather than "
+            "'quality' to avoid colliding with examples/project-local/pipelines/quality.yaml, "
+            "the documented example of a project-local pipeline."
+        ),
+        source="built-in",
+        execution_kind="declarative",
+        requires_provider=False,
+        steps=(
+            PipelineStepDefinition(name="verify-project", skippable=False, skip_condition=None),
+            PipelineStepDefinition(name="test-report", skippable=False, skip_condition=None),
+            PipelineStepDefinition(name="dependency-audit", skippable=False, skip_condition=None),
+        ),
+    ),
 )
 
 

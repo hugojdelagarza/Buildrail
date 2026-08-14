@@ -48,6 +48,7 @@ def test_default_registry_discovers_all_built_in_skills() -> None:
         "generate-docs",
         "release-notes",
         "review-diff",
+        "test-report",
         "test-summary",
         "verify-project",
     ]

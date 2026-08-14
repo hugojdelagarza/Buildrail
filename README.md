@@ -9,14 +9,16 @@ of truth. Pipelines, skills, and workflows run locally by default; AI
 providers and cloud services are optional, swappable backends rather than
 hard requirements.
 
-> **Status:** Phases 0–3, 6, and 9 are complete: CLI, Core Engine,
+> **Status:** Phases 0–3, 6, 7, and 9 are complete: CLI, Core Engine,
 > configuration, Provider Gateway (Fake + Anthropic adapters), a
 > manifest-driven Skill Registry, the Artifact Store/Reader, Git hook
 > management, named pipelines (`buildrail run pre-commit`,
-> `buildrail run project-intelligence`), and project-local skills/pipelines
-> (`buildrail skill create`, `buildrail pipeline create`) are all
-> implemented — plus a local HTTP service and dashboard (`buildrail serve`)
-> and a dependency audit (`buildrail dependency-audit`) that go beyond the
+> `buildrail run project-intelligence`, `buildrail run quality-gate`),
+> project-local skills/pipelines (`buildrail skill create`,
+> `buildrail pipeline create`), and a first-class testing workflow
+> (`buildrail test`, `buildrail test --analyze`) are all implemented —
+> plus a local HTTP service and dashboard (`buildrail serve`) and a
+> dependency audit (`buildrail dependency-audit`) that go beyond the
 > original roadmap. See [docs/roadmap.md](docs/roadmap.md) for phase status
 > and what's next.
 
@@ -114,6 +116,36 @@ constructed. With no `--base`, the diff is collected against the
 branch's upstream if one is configured, otherwise `HEAD~1`. If there
 are no changes against the resolved base, review is skipped (no
 provider call) and the pipeline still reports success.
+
+### Testing
+
+`buildrail test` is Buildrail's primary testing workflow: it runs the
+project's pytest suite deterministically and writes a `test-report`
+artifact (Markdown plus a machine-readable JSON sidecar) with pass/fail
+counts, individual failures, collection errors, and — only when a
+`coverage.xml` already exists — a coverage summary. It never invokes
+coverage tooling itself and has no hard dependency on it.
+
+```
+buildrail test
+buildrail test --analyze
+buildrail test --history
+```
+
+`--analyze` sends failing-test context to the configured provider for a
+short root-cause summary — only when the run actually has failures,
+never on a clean pass, and it never blocks the deterministic result if
+no provider is configured. `--history` compares this run's failures
+against recent `test-report` runs and notes tests that failed now but
+not in the immediately preceding run as a possible flaky signal — a
+conservative note, never an automatic rerun or a "confirmed flaky"
+verdict. `buildrail test-summary` — the older, narrower AI-summary-only
+command — still works exactly as before and now shares this same
+pytest executor internally instead of a second implementation.
+
+`buildrail run quality-gate` composes `verify-project`, `test-report`,
+and `dependency-audit` into one run: Buildrail's broadest local quality
+check, still fully offline by default.
 
 ### Project Intelligence
 
@@ -251,8 +283,8 @@ buildrail skill inspect review-diff
 ```
 
 Pipelines work the same way, through the Pipeline Registry — built-in
-(`pre-commit`, `project-intelligence`) and project-local pipelines
-listed and inspected together:
+(`pre-commit`, `project-intelligence`, `quality-gate`) and project-local
+pipelines listed and inspected together:
 
 ```
 buildrail pipeline list
@@ -343,9 +375,9 @@ desktop-specific limitations.
 ```
 buildrail/
 ├── src/        # CLI, Core Engine, Provider Gateway, Skill Registry, Pipeline Runner, Artifact Store/Reader
-├── skills/     # reusable skill definitions (review-diff, test-summary, verify-project,
-│               #   release-notes, explain-project, generate-docs, generate-diagram,
-│               #   dependency-audit)
+├── skills/     # reusable skill definitions (review-diff, test-summary, test-report,
+│               #   verify-project, release-notes, explain-project, generate-docs,
+│               #   generate-diagram, dependency-audit)
 ├── plugins/    # optional cloud/integration plugins (later phase)
 ├── frontend/   # local React/Vite dashboard — talks to `buildrail serve` over HTTP only
 │   └── src-tauri/  # optional minimal Tauri shell that hosts the same frontend natively
