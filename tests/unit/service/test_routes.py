@@ -411,3 +411,217 @@ def test_wrong_method_on_the_config_route_returns_404(tmp_path: Path, method: st
     status, _body = dispatch(method, "/config", {}, tmp_path)
 
     assert status == 404
+
+
+# --- Project-local extensions: POST /skills, POST /pipelines, running project-local pipelines ---
+
+
+def test_post_skills_creates_a_project_local_skill(tmp_path: Path) -> None:
+    status, body = dispatch("POST", "/skills", {"name": "api-review"}, tmp_path)
+
+    assert status == 201
+    assert body["name"] == "api-review"
+    assert body["project_relative_path"] == ".buildrail/skills/api-review"
+    assert str(tmp_path) not in body["project_relative_path"]
+    assert (tmp_path / ".buildrail" / "skills" / "api-review" / "skill.yaml").is_file()
+
+
+def test_post_skills_does_not_require_an_existing_configured_project(tmp_path: Path) -> None:
+    status, _body = dispatch("POST", "/skills", {"name": "api-review"}, tmp_path)
+
+    assert status == 201
+
+
+def test_post_skills_rejects_a_missing_name(tmp_path: Path) -> None:
+    status, body = dispatch("POST", "/skills", {}, tmp_path)
+
+    assert status == 400
+    assert "name" in body["error"]
+
+
+def test_post_skills_rejects_an_invalid_name(tmp_path: Path) -> None:
+    status, _body = dispatch("POST", "/skills", {"name": "../escape"}, tmp_path)
+
+    assert status == 400
+    assert not (tmp_path.parent / "escape").exists()
+    assert not (tmp_path.parent.parent / "escape").exists()
+
+
+def test_post_skills_rejects_a_non_object_body(tmp_path: Path) -> None:
+    status, body = dispatch("POST", "/skills", None, tmp_path)
+
+    assert status == 400
+    assert "JSON object" in body["error"]
+
+
+def test_post_skills_never_accepts_source_code(tmp_path: Path) -> None:
+    """The endpoint has no field for source code — only structured scaffold input."""
+    status, body = dispatch(
+        "POST",
+        "/skills",
+        {"name": "api-review", "source": "import os; os.system('rm -rf /')"},
+        tmp_path,
+    )
+
+    assert status == 201
+    generated = (tmp_path / ".buildrail" / "skills" / "api-review" / "skill.py").read_text(
+        encoding="utf-8"
+    )
+    assert "os.system" not in generated
+    assert "rm -rf" not in generated
+
+
+def test_post_pipelines_creates_a_project_local_pipeline(tmp_path: Path) -> None:
+    status, body = dispatch(
+        "POST",
+        "/pipelines",
+        {"name": "quality", "steps": [{"skill": "verify-project"}]},
+        tmp_path,
+    )
+
+    assert status == 201
+    assert body["name"] == "quality"
+    assert body["project_relative_path"] == ".buildrail/pipelines/quality.yaml"
+    assert (tmp_path / ".buildrail" / "pipelines" / "quality.yaml").is_file()
+
+
+def test_post_pipelines_defaults_to_the_verify_project_template(tmp_path: Path) -> None:
+    status, body = dispatch("POST", "/pipelines", {"name": "quality"}, tmp_path)
+
+    assert status == 201
+    manifest = (tmp_path / ".buildrail" / "pipelines" / "quality.yaml").read_text(encoding="utf-8")
+    assert "verify-project" in manifest
+
+
+def test_post_pipelines_accepts_multiple_ordered_steps_with_conditions(tmp_path: Path) -> None:
+    status, _body = dispatch(
+        "POST",
+        "/pipelines",
+        {
+            "name": "review-flow",
+            "steps": [
+                {"skill": "verify-project"},
+                {"skill": "review-diff", "condition": "changes_exist"},
+            ],
+        },
+        tmp_path,
+    )
+
+    assert status == 201
+    _, pipelines_body = dispatch("GET", "/pipelines", {}, tmp_path)
+    definition = next(p for p in pipelines_body["pipelines"] if p["name"] == "review-flow")
+    assert [s["name"] for s in definition["steps"]] == ["verify-project", "review-diff"]
+    assert definition["steps"][1]["skip_condition"] == "changes_exist"
+
+
+def test_post_pipelines_rejects_an_unsupported_condition(tmp_path: Path) -> None:
+    status, body = dispatch(
+        "POST",
+        "/pipelines",
+        {"name": "quality", "steps": [{"skill": "verify-project", "condition": "on_full_moon"}]},
+        tmp_path,
+    )
+
+    assert status == 400
+    assert "condition" in body["error"]
+
+
+def test_post_pipelines_rejects_a_missing_name(tmp_path: Path) -> None:
+    status, body = dispatch("POST", "/pipelines", {}, tmp_path)
+
+    assert status == 400
+    assert "name" in body["error"]
+
+
+def test_post_pipelines_rejects_an_empty_steps_list(tmp_path: Path) -> None:
+    status, body = dispatch("POST", "/pipelines", {"name": "quality", "steps": []}, tmp_path)
+
+    assert status == 400
+
+
+def test_post_pipelines_rejects_a_step_missing_skill(tmp_path: Path) -> None:
+    status, body = dispatch(
+        "POST", "/pipelines", {"name": "quality", "steps": [{"condition": "always"}]}, tmp_path
+    )
+
+    assert status == 400
+    assert "skill" in body["error"]
+
+
+def test_post_pipelines_never_accepts_raw_yaml(tmp_path: Path) -> None:
+    """There is no field for raw YAML — the server always renders it from structured input."""
+    status, body = dispatch(
+        "POST",
+        "/pipelines",
+        {"name": "quality", "yaml": "name: evil\nsteps:\n  - skill: verify-project\n"},
+        tmp_path,
+    )
+
+    assert status == 201
+    manifest = (tmp_path / ".buildrail" / "pipelines" / "quality.yaml").read_text(encoding="utf-8")
+    assert "evil" not in manifest
+
+
+def test_post_pipelines_refuses_to_overwrite_an_existing_pipeline(tmp_path: Path) -> None:
+    dispatch("POST", "/pipelines", {"name": "quality"}, tmp_path)
+
+    status, body = dispatch("POST", "/pipelines", {"name": "quality"}, tmp_path)
+
+    assert status == 400
+    assert "already exists" in body["error"]
+
+
+def _mock_verify_checks_for_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    def _run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args and args[0] == "git":
+            real_run = subprocess.run
+            result: subprocess.CompletedProcess[str] = real_run(args, **kwargs)  # type: ignore[call-overload]
+            return result
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("subprocess.run", _run)
+
+
+def test_running_a_project_local_pipeline_through_commands_endpoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_project(tmp_path, with_provider=False)
+    pipelines_dir = tmp_path / ".buildrail" / "pipelines"
+    pipelines_dir.mkdir(parents=True)
+    (pipelines_dir / "quality.yaml").write_text(
+        "name: quality\nversion: 0.1.0\ndescription: x\nsteps:\n  - skill: verify-project\n",
+        encoding="utf-8",
+    )
+    _mock_verify_checks_for_service(monkeypatch)
+
+    status, body = dispatch("POST", "/commands/quality", {}, tmp_path)
+
+    assert status == 200
+    assert body["success"] is True
+    assert "Pipeline: quality" in body["message"]
+
+
+def test_running_an_unknown_command_or_pipeline_returns_404(tmp_path: Path) -> None:
+    _init_project(tmp_path)
+
+    status, body = dispatch("POST", "/commands/nonexistent", {}, tmp_path)
+
+    assert status == 404
+    assert "nonexistent" in body["error"]
+
+
+def test_running_a_built_in_pipeline_by_name_still_works_through_commands(
+    tmp_path: Path,
+) -> None:
+    """The generic project-local fallback in `_run_command` must never shadow
+    'pre-commit'/'project-intelligence' — those stay in `_COMMAND_NAMES` and
+    dispatch through `run_pre_commit`, never through `run_named_pipeline`."""
+    _init_project(tmp_path)
+
+    status, body = dispatch("POST", "/commands/pre-commit", {}, tmp_path)
+
+    assert status == 200
+    assert "success" in body
+    assert "message" in body

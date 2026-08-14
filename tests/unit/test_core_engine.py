@@ -364,30 +364,30 @@ def test_test_summary_summarizes_failures_with_fake_provider(
     assert "FAILED tests/test_x.py::test_y" in content
 
 
-def test_list_skills_includes_both_built_in_skills() -> None:
+def test_list_skills_includes_both_built_in_skills(tmp_path: Path) -> None:
     engine = CoreEngine()
 
-    result = engine.list_skills()
+    result = engine.list_skills(tmp_path)
 
     assert result.success is True
     assert "review-diff" in result.message
     assert "test-summary" in result.message
 
 
-def test_inspect_skill_returns_manifest_details_for_review_diff() -> None:
+def test_inspect_skill_returns_manifest_details_for_review_diff(tmp_path: Path) -> None:
     engine = CoreEngine()
 
-    result = engine.inspect_skill("review-diff")
+    result = engine.inspect_skill(tmp_path, "review-diff")
 
     assert result.success is True
     assert "name: review-diff" in result.message
     assert "protocol_version: 1.0" in result.message
 
 
-def test_inspect_skill_fails_without_traceback_for_unknown_skill() -> None:
+def test_inspect_skill_fails_without_traceback_for_unknown_skill(tmp_path: Path) -> None:
     engine = CoreEngine()
 
-    result = engine.inspect_skill("does-not-exist")
+    result = engine.inspect_skill(tmp_path, "does-not-exist")
 
     assert result.success is False
     assert "does-not-exist" in result.message
@@ -1229,3 +1229,382 @@ def test_run_project_intelligence_cleans_up_its_temp_analysis_file(tmp_path: Pat
     after = set(Path(tempfile.gettempdir()).glob("buildrail-analysis-*"))
 
     assert after == before
+
+
+def test_run_pre_commit_writes_pipeline_source_built_in(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_precommit_repo(tmp_path)
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_pre_commit(tmp_path, base_ref="HEAD")
+
+    assert result.success is True
+    run_dir = next((tmp_path / "artifacts").iterdir())
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert manifest["pipeline_source"] == "built-in"
+
+
+def test_run_project_intelligence_writes_pipeline_source_built_in(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    repo = _sample_python_project(tmp_path)
+    engine = CoreEngine()
+
+    result = engine.run_project_intelligence(tmp_path, path=str(repo))
+
+    assert result.success is True
+    run_dir = next((tmp_path / "artifacts").iterdir())
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert manifest["pipeline_source"] == "built-in"
+
+
+# --- Project-local extensions: .buildrail/skills, .buildrail/pipelines ---
+
+
+def _write_project_skill(project_root: Path, name: str) -> None:
+    skill_dir = project_root / ".buildrail" / "skills" / name
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "skill.yaml").write_text(
+        f'name: {name}\nversion: 0.1.0\nprotocol_version: "1.0"\n'
+        f'description: A test skill.\nentrypoint: "python skill.py"\ninputs: []\n'
+        f"outputs:\n  - name: summary\n    artifact_type: {name}\n",
+        encoding="utf-8",
+    )
+    (skill_dir / "skill.py").write_text(
+        "from buildrail.skill_protocol import SkillOutput, SkillResponse\n\n\n"
+        "def run(request, provider):\n"
+        f'    output = SkillOutput(content="hello", artifact_type="{name}")\n'
+        '    return SkillResponse(status="success", outputs={"summary": output})\n',
+        encoding="utf-8",
+    )
+
+
+def _write_project_pipeline(project_root: Path, name: str, steps_yaml: str) -> None:
+    pipelines_dir = project_root / ".buildrail" / "pipelines"
+    pipelines_dir.mkdir(parents=True, exist_ok=True)
+    (pipelines_dir / f"{name}.yaml").write_text(
+        f"name: {name}\nversion: 0.1.0\ndescription: A test pipeline.\nsteps:\n{steps_yaml}",
+        encoding="utf-8",
+    )
+
+
+def test_init_config_scaffolds_project_extensions_by_default(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.init_config(tmp_path)
+
+    assert result.success is True
+    assert (tmp_path / ".buildrail" / "skills").is_dir()
+    assert (tmp_path / ".buildrail" / "pipelines").is_dir()
+    assert (tmp_path / ".buildrail" / "README.md").is_file()
+
+
+def test_init_config_extensions_only_works_without_a_config_file(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.init_config(tmp_path, extensions_only=True)
+
+    assert result.success is True
+    assert (tmp_path / ".buildrail" / "skills").is_dir()
+    assert not (tmp_path / "buildrail.toml").exists()
+
+
+def test_init_config_extensions_only_is_idempotent(tmp_path: Path) -> None:
+    engine = CoreEngine()
+    engine.init_config(tmp_path, extensions_only=True)
+
+    result = engine.init_config(tmp_path, extensions_only=True)
+
+    assert result.success is True
+    assert "already exists" in result.message
+
+
+def test_init_config_never_overwrites_existing_project_local_skills(tmp_path: Path) -> None:
+    _write_project_skill(tmp_path, "mine")
+    original = (tmp_path / ".buildrail" / "skills" / "mine" / "skill.py").read_text(
+        encoding="utf-8"
+    )
+    engine = CoreEngine()
+
+    engine.init_config(tmp_path)
+
+    unchanged = (tmp_path / ".buildrail" / "skills" / "mine" / "skill.py").read_text(
+        encoding="utf-8"
+    )
+    assert unchanged == original
+
+
+def test_create_skill_via_core_engine(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.create_skill(tmp_path, "api-review")
+
+    assert result.success is True
+    assert ".buildrail/skills/api-review" in result.message.replace("\\", "/")
+    assert (tmp_path / ".buildrail" / "skills" / "api-review" / "skill.yaml").is_file()
+
+
+def test_create_skill_rejects_invalid_names(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.create_skill(tmp_path, "Not Valid")
+
+    assert result.success is False
+
+
+def test_list_skills_includes_project_local_skills_with_source(tmp_path: Path) -> None:
+    _write_project_skill(tmp_path, "mine")
+    engine = CoreEngine()
+
+    result = engine.list_skills(tmp_path)
+
+    assert result.success is True
+    assert "mine" in result.message
+    assert "[project-local]" in result.message
+
+
+def test_inspect_skill_shows_project_relative_path_not_a_full_path(tmp_path: Path) -> None:
+    _write_project_skill(tmp_path, "mine")
+    engine = CoreEngine()
+
+    result = engine.inspect_skill(tmp_path, "mine")
+
+    assert result.success is True
+    assert ".buildrail/skills/mine" in result.message.replace("\\", "/")
+    assert str(tmp_path) not in result.message
+
+
+def test_list_pipelines_includes_built_ins_and_project_local(tmp_path: Path) -> None:
+    _write_project_pipeline(tmp_path, "quality", "  - skill: verify-project\n")
+    engine = CoreEngine()
+
+    result = engine.list_pipelines(tmp_path)
+
+    assert result.success is True
+    assert "pre-commit" in result.message
+    assert "project-intelligence" in result.message
+    assert "quality" in result.message
+    assert "[project-local]" in result.message
+
+
+def test_inspect_pipeline_shows_steps_conditions_and_inputs(tmp_path: Path) -> None:
+    _write_project_pipeline(
+        tmp_path,
+        "quality",
+        "  - skill: verify-project\n  - skill: review-diff\n    condition: changes_exist\n",
+    )
+    engine = CoreEngine()
+
+    result = engine.inspect_pipeline(tmp_path, "quality")
+
+    assert result.success is True
+    assert "verify-project" in result.message
+    assert "review-diff" in result.message
+    assert "changes_exist" in result.message
+    assert "requires_provider: True" in result.message
+
+
+def test_create_pipeline_via_core_engine(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.create_pipeline(tmp_path, "quality")
+
+    assert result.success is True
+    assert (tmp_path / ".buildrail" / "pipelines" / "quality.yaml").is_file()
+
+
+def test_create_pipeline_rejects_invalid_names(tmp_path: Path) -> None:
+    engine = CoreEngine()
+
+    result = engine.create_pipeline(tmp_path, "Not Valid")
+
+    assert result.success is False
+
+
+def test_run_named_pipeline_single_provider_free_step(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_config(tmp_path, with_provider=False)
+    _write_project_pipeline(tmp_path, "quality", "  - skill: verify-project\n")
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "quality")
+
+    assert result.success is True
+    assert "verify-project: passed" in result.message
+    run_dir = next((tmp_path / "artifacts").iterdir())
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert manifest["pipeline"] == "quality"
+    assert manifest["pipeline_source"] == "project-local"
+
+
+def test_run_named_pipeline_multi_step_shares_one_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_config(tmp_path, with_provider=False)
+    _write_project_skill(tmp_path, "my-skill")
+    _write_project_pipeline(tmp_path, "quality", "  - skill: verify-project\n  - skill: my-skill\n")
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "quality")
+
+    assert result.success is True
+    run_dirs = list((tmp_path / "artifacts").iterdir())
+    assert len(run_dirs) == 1
+    manifest = json.loads((run_dirs[0] / "run.json").read_text(encoding="utf-8"))
+    assert [s["name"] for s in manifest["pipeline_steps"]] == ["verify-project", "my-skill"]
+    assert len(manifest["artifacts"]) == 2
+
+
+def test_run_named_pipeline_stops_on_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_config(tmp_path, with_provider=False)
+    _write_project_skill(tmp_path, "my-skill")
+    _write_project_pipeline(tmp_path, "quality", "  - skill: verify-project\n  - skill: my-skill\n")
+    _mock_verify_checks(monkeypatch, fail_check="mypy")
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "quality")
+
+    assert result.success is False
+    run_dir = next((tmp_path / "artifacts").iterdir())
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    statuses = {s["name"]: s["status"] for s in manifest["pipeline_steps"]}
+    assert statuses["verify-project"] == "failed"
+    assert statuses["my-skill"] == "skipped"
+
+
+def test_run_named_pipeline_changes_exist_skips_when_no_diff(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Two commits (so HEAD~1 exists, the default base-ref fallback), the
+    # second one empty, so a clean working tree diffs as empty against it.
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test User")
+    (tmp_path / "a.txt").write_text("a\n", encoding="utf-8")
+    _git(tmp_path, "add", "a.txt")
+    _git(tmp_path, "commit", "-q", "-m", "chore: initial commit")
+    _git(tmp_path, "commit", "-q", "--allow-empty", "-m", "chore: no-op commit")
+    _init_config(tmp_path, with_provider=False)
+    _write_project_pipeline(
+        tmp_path, "quality", "  - skill: verify-project\n    condition: changes_exist\n"
+    )
+    real_run = subprocess.run
+
+    def _guarded_run(args: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        args_list = list(args)
+        if args_list and args_list[0] != "git":
+            raise AssertionError("verify-project must not run when there are no changes")
+        result: subprocess.CompletedProcess[str] = real_run(args_list, **kwargs)  # type: ignore[call-overload]
+        return result
+
+    monkeypatch.setattr("subprocess.run", _guarded_run)
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "quality")
+
+    assert result.success is True
+    assert "verify-project: skipped" in result.message
+    assert "no changes" in result.message
+
+
+def test_run_named_pipeline_changes_exist_runs_when_diff_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_repo_with_commits(tmp_path)
+    _init_config(tmp_path, with_provider=False)
+    (tmp_path / "a.txt").write_text("a\nb\n", encoding="utf-8")
+    _write_project_pipeline(
+        tmp_path, "quality", "  - skill: verify-project\n    condition: changes_exist\n"
+    )
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "quality")
+
+    assert result.success is True
+    assert "verify-project: passed" in result.message
+
+
+def test_run_named_pipeline_provider_required_step_uses_fake_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_config(tmp_path, with_provider=True)
+    diff_file = tmp_path / "changes.patch"
+    diff_file.write_text("--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n", encoding="utf-8")
+    _write_project_pipeline(
+        tmp_path,
+        "review-only",
+        f"  - skill: review-diff\n    inputs:\n      diff: {diff_file.as_posix()}\n",
+    )
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "review-only")
+
+    assert result.success is True
+    assert "review-diff: passed" in result.message
+    assert "tokens:" in result.message
+
+
+def test_run_named_pipeline_fails_cleanly_when_provider_missing(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    diff_file = tmp_path / "changes.patch"
+    diff_file.write_text("--- a/x.py\n+++ b/x.py\n", encoding="utf-8")
+    _write_project_pipeline(
+        tmp_path,
+        "review-only",
+        f"  - skill: review-diff\n    inputs:\n      diff: {diff_file.as_posix()}\n",
+    )
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "review-only")
+
+    assert result.success is False
+    assert "No provider configured" in result.message
+
+
+def test_run_named_pipeline_rejects_built_in_pipeline_names(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "pre-commit")
+
+    assert result.success is False
+    assert "buildrail run pre-commit" in result.message
+
+
+def test_run_named_pipeline_fails_cleanly_for_unknown_pipeline(tmp_path: Path) -> None:
+    _init_config(tmp_path, with_provider=False)
+    engine = CoreEngine()
+
+    result = engine.run_named_pipeline(tmp_path, "nonexistent")
+
+    assert result.success is False
+    assert "nonexistent" in result.message
+
+
+def test_run_named_pipeline_artifacts_are_inspectable_afterward(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _init_config(tmp_path, with_provider=False)
+    _write_project_pipeline(tmp_path, "quality", "  - skill: verify-project\n")
+    _mock_verify_checks(monkeypatch)
+    engine = CoreEngine()
+    engine.run_named_pipeline(tmp_path, "quality")
+    run_id = next((tmp_path / "artifacts").iterdir()).name
+
+    runs_result = engine.list_runs(tmp_path)
+    inspect_result = engine.inspect_run(tmp_path, run_id)
+
+    assert run_id in runs_result.message
+    assert "quality" in inspect_result.message
+    assert "pipeline_source: project-local" in inspect_result.message
+
+    artifact_id = f"{run_id}/001-verification-report-report"
+    artifact_result = engine.inspect_artifact(tmp_path, artifact_id)
+    assert artifact_result.success is True

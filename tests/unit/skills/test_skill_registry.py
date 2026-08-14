@@ -213,3 +213,87 @@ def test_directories_without_a_manifest_are_skipped(tmp_path: Path) -> None:
     manifests = registry.list_skills()
 
     assert [m.name for m in manifests] == ["real-skill"]
+
+
+def _write_project_skill(project_root: Path, dirname: str, yaml_text: str) -> None:
+    _write_skill(project_root / ".buildrail" / "skills", dirname, yaml_text)
+
+
+def test_project_local_skills_are_discovered_alongside_built_ins(tmp_path: Path) -> None:
+    _write_project_skill(tmp_path, "my-skill", _VALID_MANIFEST.format(name="my-skill"))
+    registry = SkillRegistry(project_root=tmp_path)
+
+    names = [m.name for m in registry.list_skills()]
+
+    assert "my-skill" in names
+    assert "review-diff" in names
+
+
+def test_project_local_skill_source_metadata_is_project_local(tmp_path: Path) -> None:
+    _write_project_skill(tmp_path, "my-skill", _VALID_MANIFEST.format(name="my-skill"))
+    registry = SkillRegistry(project_root=tmp_path)
+
+    manifest = registry.get_manifest("my-skill")
+
+    assert manifest.source == "project-local"
+    assert manifest.path == tmp_path / ".buildrail" / "skills" / "my-skill"
+
+
+def test_built_in_skill_source_metadata_is_built_in(tmp_path: Path) -> None:
+    registry = SkillRegistry(project_root=tmp_path)
+
+    manifest = registry.get_manifest("review-diff")
+
+    assert manifest.source == "built-in"
+
+
+def test_no_project_root_means_only_built_ins_are_discovered() -> None:
+    registry = SkillRegistry()
+
+    names = [m.name for m in registry.list_skills()]
+
+    assert all(name != "my-skill" for name in names)
+
+
+def test_two_project_local_skills_with_the_same_name_are_rejected(tmp_path: Path) -> None:
+    _write_project_skill(tmp_path, "a", _VALID_MANIFEST.format(name="dup"))
+    _write_project_skill(tmp_path, "b", _VALID_MANIFEST.format(name="dup"))
+    registry = SkillRegistry(project_root=tmp_path)
+
+    with pytest.raises(DuplicateSkillError, match="dup"):
+        registry.list_skills()
+
+
+def test_project_local_skill_colliding_with_a_built_in_name_fails_clearly(tmp_path: Path) -> None:
+    _write_project_skill(tmp_path, "review-diff", _VALID_MANIFEST.format(name="review-diff"))
+    registry = SkillRegistry(project_root=tmp_path)
+
+    with pytest.raises(DuplicateSkillError, match="built-in"):
+        registry.list_skills()
+
+
+def test_project_local_skill_never_silently_overrides_a_built_in(tmp_path: Path) -> None:
+    """A colliding project-local skill must fail discovery, not shadow the built-in."""
+    _write_project_skill(tmp_path, "review-diff", _VALID_MANIFEST.format(name="review-diff"))
+    registry = SkillRegistry(project_root=tmp_path)
+
+    with pytest.raises(DuplicateSkillError):
+        registry.get_manifest("review-diff")
+
+
+def test_project_root_containing_spaces_discovers_project_local_skills(tmp_path: Path) -> None:
+    project_root = tmp_path / "my project"
+    _write_project_skill(project_root, "my-skill", _VALID_MANIFEST.format(name="my-skill"))
+    registry = SkillRegistry(project_root=project_root)
+
+    manifest = registry.get_manifest("my-skill")
+
+    assert manifest.source == "project-local"
+
+
+def test_missing_buildrail_directory_does_not_error(tmp_path: Path) -> None:
+    registry = SkillRegistry(project_root=tmp_path)
+
+    manifests = registry.list_skills()
+
+    assert any(m.name == "review-diff" for m in manifests)

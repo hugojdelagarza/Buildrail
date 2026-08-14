@@ -1,4 +1,5 @@
-"""SkillRegistry: discovers built-in skills, validates their manifests, and resolves them by name.
+"""SkillRegistry: discovers built-in and project-local skills, validates their
+manifests, and resolves them by name.
 
 Replaces Milestone 1's hardcoded `buildrail.skill_loader` path
 (docs/skills.md §6's Execution Lifecycle, step 1). Only the minimal
@@ -7,16 +8,23 @@ validated here — not a generalized schema engine for fields no skill
 uses yet. Skills still execute in-process (docs/skills.md's phasing
 note); `entrypoint` is parsed only to locate the Python file to import,
 not to spawn a subprocess.
+
+Project-local skills (`.buildrail/skills/<name>/`) use the exact same
+manifest protocol and validation as built-in skills — there is no second
+skill format. They are trusted repository code: Buildrail does not
+sandbox them, and a project-local skill with the same name as a built-in
+one is a discovery error, never a silent override (see `_discover_manifests`).
 """
 
 import importlib.util
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import yaml
 
+from buildrail.extensions import project_skills_dir
 from buildrail.providers import ProviderGateway
 from buildrail.skill_protocol import SkillRequest, SkillResponse
 from buildrail.skills.errors import (
@@ -28,6 +36,7 @@ from buildrail.skills.errors import (
 )
 
 SkillRunner = Callable[[SkillRequest, ProviderGateway | None], SkillResponse]
+SkillSource = Literal["built-in", "project-local"]
 
 _MANIFEST_FILENAME = "skill.yaml"
 _SUPPORTED_PROTOCOL_VERSIONS = frozenset({"1.0"})
@@ -66,24 +75,46 @@ class SkillManifest:
     entrypoint: str
     requires_provider: bool
     path: Path
+    source: SkillSource = "built-in"
     inputs: tuple[SkillManifestInput, ...] = ()
     outputs: tuple[SkillManifestOutput, ...] = ()
 
 
 class SkillRegistry:
-    """Discovers skill.yaml manifests under a directory and resolves skills by name."""
+    """Discovers skill.yaml manifests and resolves skills by name.
 
-    def __init__(self, skills_dir: Path | None = None) -> None:
+    Always searches the built-in `skills/` directory. When `project_root`
+    is given, also searches `<project_root>/.buildrail/skills/` — built-in
+    skills are discovered first, so a project-local skill sharing a
+    built-in's name is reported as a collision against that built-in, not
+    a silent override (`_discover_manifests`).
+    """
+
+    def __init__(
+        self,
+        skills_dir: Path | None = None,
+        *,
+        project_root: Path | None = None,
+    ) -> None:
         self._skills_dir = skills_dir if skills_dir is not None else DEFAULT_SKILLS_DIR
+        self._project_skills_dir = (
+            project_skills_dir(project_root) if project_root is not None else None
+        )
+
+    def _search_paths(self) -> tuple[tuple[Path, SkillSource], ...]:
+        paths: list[tuple[Path, SkillSource]] = [(self._skills_dir, "built-in")]
+        if self._project_skills_dir is not None:
+            paths.append((self._project_skills_dir, "project-local"))
+        return tuple(paths)
 
     def list_skills(self) -> tuple[SkillManifest, ...]:
         """Return every discovered skill's manifest, sorted by name."""
-        manifests = _discover_manifests(self._skills_dir)
+        manifests = _discover_manifests(self._search_paths())
         return tuple(manifests[name] for name in sorted(manifests))
 
     def get_manifest(self, name: str) -> SkillManifest:
         """Return the validated manifest for one skill, by name."""
-        manifests = _discover_manifests(self._skills_dir)
+        manifests = _discover_manifests(self._search_paths())
         try:
             return manifests[name]
         except KeyError:
@@ -106,27 +137,46 @@ class SkillRegistry:
         return cast(SkillRunner, module.run)
 
 
-def _discover_manifests(skills_dir: Path) -> dict[str, SkillManifest]:
-    manifests: dict[str, SkillManifest] = {}
-    if not skills_dir.is_dir():
-        return manifests
+def _discover_manifests(
+    search_paths: tuple[tuple[Path, SkillSource], ...],
+) -> dict[str, SkillManifest]:
+    """Discover manifests across one or more (directory, source) pairs, in order.
 
-    for skill_dir in sorted(p for p in skills_dir.iterdir() if p.is_dir()):
-        manifest_path = skill_dir / _MANIFEST_FILENAME
-        if not manifest_path.is_file():
+    Precedence is deliberately simple and safe: built-in directories are
+    always searched first (see `SkillRegistry._search_paths`), so a
+    project-local skill sharing a built-in's name is always detected as a
+    collision against an already-registered built-in — there is no
+    override/replace semantics in this version of Buildrail.
+    """
+    manifests: dict[str, SkillManifest] = {}
+    for skills_dir, source in search_paths:
+        if not skills_dir.is_dir():
             continue
 
-        manifest = _load_manifest(manifest_path)
-        if manifest.name in manifests:
-            raise DuplicateSkillError(
-                f"Duplicate skill name '{manifest.name}': already registered from "
-                f"{manifests[manifest.name].path}, also found at {manifest.path}."
-            )
-        manifests[manifest.name] = manifest
+        for skill_dir in sorted(p for p in skills_dir.iterdir() if p.is_dir()):
+            manifest_path = skill_dir / _MANIFEST_FILENAME
+            if not manifest_path.is_file():
+                continue
+
+            manifest = _load_manifest(manifest_path, source=source)
+            existing = manifests.get(manifest.name)
+            if existing is not None:
+                if existing.source == "built-in" and manifest.source == "project-local":
+                    raise DuplicateSkillError(
+                        f"Project-local skill '{manifest.name}' at {manifest.path} has the same "
+                        f"name as the built-in skill at {existing.path}. Built-in skills cannot "
+                        "be overridden in this version of Buildrail — rename the project-local "
+                        "skill."
+                    )
+                raise DuplicateSkillError(
+                    f"Duplicate skill name '{manifest.name}': already registered from "
+                    f"{existing.path}, also found at {manifest.path}."
+                )
+            manifests[manifest.name] = manifest
     return manifests
 
 
-def _load_manifest(manifest_path: Path) -> SkillManifest:
+def _load_manifest(manifest_path: Path, *, source: SkillSource = "built-in") -> SkillManifest:
     try:
         raw_text = manifest_path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -140,10 +190,10 @@ def _load_manifest(manifest_path: Path) -> SkillManifest:
     if not isinstance(raw, dict):
         raise ManifestValidationError(f"{manifest_path} must contain a YAML mapping.")
 
-    return _validate(raw, manifest_path)
+    return _validate(raw, manifest_path, source=source)
 
 
-def _validate(raw: dict[str, Any], manifest_path: Path) -> SkillManifest:
+def _validate(raw: dict[str, Any], manifest_path: Path, *, source: SkillSource) -> SkillManifest:
     for field in _REQUIRED_FIELDS:
         if field not in raw:
             raise ManifestValidationError(f"{manifest_path} is missing required field '{field}'.")
@@ -195,6 +245,7 @@ def _validate(raw: dict[str, Any], manifest_path: Path) -> SkillManifest:
         entrypoint=entrypoint,
         requires_provider=requires_provider,
         path=manifest_path.parent,
+        source=source,
         inputs=_parse_inputs(inputs, manifest_path),
         outputs=_parse_outputs(outputs, manifest_path),
     )

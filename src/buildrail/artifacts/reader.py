@@ -54,6 +54,9 @@ class RunSummary:
     artifact_count: int
     artifact_types: tuple[str, ...]
     pipeline: str | None = None
+    # "built-in" or "project-local"; None for a single-skill run, or a run
+    # written before this field existed (docs/artifacts.md §4).
+    pipeline_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,7 @@ class RunDetail:
     created_at: str | None
     artifacts: tuple[ArtifactDetail, ...]
     pipeline: str | None = None
+    pipeline_source: str | None = None
     pipeline_steps: tuple[PipelineStepSummary, ...] = ()
     duration_seconds: float | None = None
     provider_usage_totals: dict[str, Any] | None = None
@@ -153,6 +157,7 @@ class ArtifactReader:
             created_at=summary.created_at,
             artifacts=tuple(details),
             pipeline=summary.pipeline,
+            pipeline_source=summary.pipeline_source,
             pipeline_steps=_pipeline_steps(manifest, manifest_path),
             duration_seconds=_optional_float(manifest, "duration_seconds", manifest_path),
             provider_usage_totals=_optional_dict(manifest, "provider_usage_totals", manifest_path),
@@ -268,6 +273,10 @@ def _summarize_run(run_id: str, manifest: dict[str, Any], source: Path) -> RunSu
     if pipeline is not None and not isinstance(pipeline, str):
         raise MalformedMetadataError(f"{source}: 'pipeline' must be a string.")
 
+    pipeline_source = manifest.get("pipeline_source")
+    if pipeline_source is not None and not isinstance(pipeline_source, str):
+        raise MalformedMetadataError(f"{source}: 'pipeline_source' must be a string.")
+
     return RunSummary(
         run_id=run_id,
         status=status,
@@ -275,6 +284,7 @@ def _summarize_run(run_id: str, manifest: dict[str, Any], source: Path) -> RunSu
         artifact_count=len(artifacts),
         artifact_types=types,
         pipeline=pipeline,
+        pipeline_source=pipeline_source,
     )
 
 

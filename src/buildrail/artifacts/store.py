@@ -107,12 +107,16 @@ class ArtifactStore:
         steps: list[dict[str, object]],
         duration_seconds: float,
         provider_usage: dict[str, object] | None = None,
+        pipeline_source: str | None = None,
     ) -> None:
         """Record named-pipeline-level metadata (status, ordered steps, duration) in run.json.
 
         Complements `write_artifact`'s per-artifact entries with the
         aggregate facts a named, multi-step pipeline needs to report —
         e.g. a step that was skipped and so never produced an artifact.
+        `pipeline_source` ("built-in" or "project-local") is omitted
+        rather than written as `null` when not given, so older run.json
+        files without it remain valid to read.
         """
         run_dir = self._root / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -123,6 +127,8 @@ class ArtifactStore:
         manifest["duration_seconds"] = duration_seconds
         if provider_usage is not None:
             manifest["provider_usage_totals"] = provider_usage
+        if pipeline_source is not None:
+            manifest["pipeline_source"] = pipeline_source
         _atomic_write(run_dir / "run.json", json.dumps(manifest, indent=2, sort_keys=True))
 
     @staticmethod

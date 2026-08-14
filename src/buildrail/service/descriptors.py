@@ -1,13 +1,15 @@
-"""Static metadata for every command and named pipeline the local HTTP service
-exposes — the single source of truth `GET /commands` and `GET /pipelines`
-serialize. Buildrail's two named pipelines (`pre-commit`,
-`project-intelligence`) are implemented as `CoreEngine` methods with their
-step sequence inlined at the call site (see `core/engine.py`); this module
-does not change that — it is a hand-written, deliberately minimal
-*description* of that existing behavior for API consumers, not a new
-execution mechanism. If a pipeline's real steps ever diverge from what's
-described here, update this module alongside `core/engine.py` in the same
-change, the same way any other doc/code pair in this codebase stays in sync.
+"""Static metadata for every single-skill command the local HTTP service
+exposes through `POST /commands/{id}` — the single source of truth
+`GET /commands` serializes.
+
+Named pipelines (`pre-commit`, `project-intelligence`, and any
+project-local pipeline) are described by `buildrail.pipeline.PipelineRegistry`
+instead — not duplicated here — so the CLI, this service, and the frontend
+all read one shared description of a pipeline's steps
+(`buildrail.service.routes._list_pipelines`). Pipelines still execute
+through the same `POST /commands/{name}` endpoint as the commands below
+(`routes._run_command`); this module's `COMMANDS` only ever describes
+genuinely single-skill, non-pipeline commands.
 """
 
 from dataclasses import dataclass
@@ -15,7 +17,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class CommandArgument:
-    """One optional or required argument a command/pipeline endpoint accepts."""
+    """One optional or required argument a command endpoint accepts."""
 
     name: str
     type: str
@@ -36,27 +38,6 @@ class CommandDescriptor:
     arguments: tuple[CommandArgument, ...]
     artifact_types: tuple[str, ...]
     category: str
-
-
-@dataclass(frozen=True)
-class PipelineStepDescriptor:
-    """One step within a named pipeline."""
-
-    name: str
-    skippable: bool
-    skip_condition: str | None
-
-
-@dataclass(frozen=True)
-class PipelineDescriptor:
-    """One named pipeline executable through `POST /commands/{name}`."""
-
-    name: str
-    display_name: str
-    description: str
-    steps: tuple[PipelineStepDescriptor, ...]
-    requires_provider: bool
-    arguments: tuple[CommandArgument, ...]
 
 
 _PATH_ARG = CommandArgument(
@@ -182,59 +163,5 @@ COMMANDS: tuple[CommandDescriptor, ...] = (
         ),
         artifact_types=("architecture-summary", "documentation", "diagram"),
         category="pipeline",
-    ),
-)
-
-PIPELINES: tuple[PipelineDescriptor, ...] = (
-    PipelineDescriptor(
-        name="pre-commit",
-        display_name="Pre-Commit",
-        description="Runs verify-project, then review-diff only when there's a Git diff to review.",
-        steps=(
-            PipelineStepDescriptor(name="verify-project", skippable=False, skip_condition=None),
-            PipelineStepDescriptor(
-                name="review-diff",
-                skippable=True,
-                skip_condition=(
-                    "Skipped if verification failed, --skip-review was set, "
-                    "or there are no changes against the resolved base ref."
-                ),
-            ),
-        ),
-        requires_provider=True,
-        arguments=(
-            CommandArgument(
-                name="base", type="string", required=False, description="Git ref to diff against."
-            ),
-            CommandArgument(
-                name="skip_review",
-                type="boolean",
-                required=False,
-                description="Skip review-diff even if changes exist.",
-            ),
-        ),
-    ),
-    PipelineDescriptor(
-        name="project-intelligence",
-        display_name="Project Intelligence",
-        description=(
-            "Runs explain-project, generate-docs, and generate-diagram sharing one "
-            "analysis, one run id, and one run.json."
-        ),
-        steps=(
-            PipelineStepDescriptor(name="explain-project", skippable=False, skip_condition=None),
-            PipelineStepDescriptor(name="generate-docs", skippable=False, skip_condition=None),
-            PipelineStepDescriptor(name="generate-diagram", skippable=False, skip_condition=None),
-        ),
-        requires_provider=True,
-        arguments=(
-            _PATH_ARG,
-            CommandArgument(
-                name="enhance",
-                type="boolean",
-                required=False,
-                description="Enhance generated docs with the configured provider.",
-            ),
-        ),
     ),
 )

@@ -19,6 +19,11 @@ from buildrail.config import (
     write_config,
 )
 from buildrail.config import validate as validate_config_fields
+from buildrail.extensions import (
+    PROJECT_EXTENSIONS_DIRNAME,
+    project_pipelines_dir,
+    project_skills_dir,
+)
 from buildrail.hooks import HookError
 from buildrail.hooks import install as install_hook_file
 from buildrail.hooks import status as hook_status_file
@@ -27,7 +32,14 @@ from buildrail.pipeline import (
     NamedPipelineResult,
     NamedStepOutcome,
     PipelineContext,
+    PipelineDefinition,
+    PipelineError,
+    PipelineRegistry,
     PipelineRunner,
+    PipelineScaffoldError,
+)
+from buildrail.pipeline import (
+    create_pipeline as scaffold_pipeline,
 )
 from buildrail.pipeline.types import PipelineResult
 from buildrail.providers import (
@@ -39,7 +51,16 @@ from buildrail.providers import (
     create_provider,
 )
 from buildrail.skill_protocol import SkillResponse
-from buildrail.skills import SkillError, SkillRegistry
+from buildrail.skills import (
+    SkillError,
+    SkillManifest,
+    SkillNotFoundError,
+    SkillRegistry,
+    SkillScaffoldError,
+)
+from buildrail.skills import (
+    create_skill as scaffold_skill,
+)
 
 _DOC_FILENAMES = ("project-overview.md", "module-reference.md", "development-guide.md")
 
@@ -141,6 +162,75 @@ def _resolve_output_path(repo_root: Path, output: str) -> Path:
     return candidate
 
 
+_EXTENSIONS_README = """\
+# Project-Local Buildrail Extensions
+
+This directory holds project-local skills and pipelines that Buildrail
+discovers automatically alongside its built-in ones.
+
+    .buildrail/
+    ├── skills/       # `buildrail skill create <name>` scaffolds here
+    └── pipelines/    # `buildrail pipeline create <name>` scaffolds here
+
+**Project-local skills execute code from this repository.** Only use
+project-local skills from repositories you trust — Buildrail does not
+sandbox them.
+
+See `buildrail skill list`, `buildrail skill create <name>`,
+`buildrail pipeline list`, `buildrail pipeline create <name>`, and
+`buildrail run <pipeline>`.
+"""
+
+
+def _scaffold_project_extensions(project_root: Path) -> bool:
+    """Idempotently create `.buildrail/skills/`, `.buildrail/pipelines/`, and a short
+    README explaining them. Never overwrites or deletes existing content.
+
+    Returns True if anything was actually created, False if everything
+    already existed.
+    """
+    created_any = False
+    for subdir in (project_skills_dir(project_root), project_pipelines_dir(project_root)):
+        if subdir.is_dir():
+            continue
+        subdir.mkdir(parents=True, exist_ok=True)
+        gitkeep = subdir / ".gitkeep"
+        if not gitkeep.exists():
+            gitkeep.write_text("", encoding="utf-8")
+        created_any = True
+
+    readme_path = project_root / PROJECT_EXTENSIONS_DIRNAME / "README.md"
+    if not readme_path.exists():
+        readme_path.write_text(_EXTENSIONS_README, encoding="utf-8")
+        created_any = True
+    return created_any
+
+
+def _relative_to_project(project_root: Path, path: Path) -> str:
+    """Return `path` relative to `project_root` as a POSIX string, for safe display.
+
+    Falls back to the absolute path only if `path` genuinely isn't under
+    `project_root` (shouldn't happen for project-local extensions, but
+    this must never raise on a caller's behalf).
+    """
+    try:
+        return path.resolve().relative_to(project_root.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _skill_source_label(manifest: SkillManifest, project_root: Path) -> str:
+    if manifest.source == "built-in":
+        return "built-in"
+    return f"project-local ({_relative_to_project(project_root, manifest.path)})"
+
+
+def _pipeline_source_label(definition: PipelineDefinition, project_root: Path) -> str:
+    if definition.source == "built-in" or definition.path is None:
+        return "built-in"
+    return f"project-local ({_relative_to_project(project_root, definition.path)})"
+
+
 def _first_existing_doc_path(output_dir: Path) -> Path | None:
     """Return the first of the three generated doc filenames that already exists, if any."""
     for filename in _DOC_FILENAMES:
@@ -170,6 +260,30 @@ def _sum_usage(response: SkillResponse, provider_name: str | None) -> dict[str, 
         "input_tokens": total_input,
         "output_tokens": total_output,
     }
+
+
+def _evaluate_step_condition(project_root: Path, condition: str) -> tuple[bool, str | None]:
+    """Evaluate a declarative pipeline step's `condition`. Returns (should_run, skip_reason).
+
+    `changes_exist` reuses the exact same Git helpers `run_pre_commit`
+    uses for its own diff-based skip logic. Any Git resolution failure
+    (not a repository, no usable base ref) skips the step rather than
+    failing the whole pipeline — a project-local pipeline may combine
+    Git-gated and unconditional steps, and one ungated step shouldn't be
+    able to break the other kind.
+    """
+    if condition == "always":
+        return True, None
+    if condition == "changes_exist":
+        try:
+            resolved_base = vcs.resolve_base_ref(project_root, None)
+            diff_result = vcs.collect_diff(project_root, resolved_base)
+        except vcs.GitError as exc:
+            return False, str(exc)
+        if diff_result.is_empty:
+            return False, f"no changes against {resolved_base}"
+        return True, None
+    raise AssertionError(f"Unreachable: unsupported condition {condition!r} passed validation.")
 
 
 def _build_pipeline_message(
@@ -218,14 +332,38 @@ class CoreEngine:
         *,
         provider: str = "fake",
         artifact_root: str = DEFAULT_ARTIFACT_ROOT,
+        extensions_only: bool = False,
     ) -> Result:
         """Create a minimal `buildrail.toml` for a new project.
 
-        Refuses to overwrite an existing configuration file — re-running
-        `init` on an already-configured project is a no-op error, not a
-        silent reset. Use `update_config` to change an existing project's
-        configuration instead.
+        Also scaffolds `.buildrail/skills/` and `.buildrail/pipelines/`
+        (idempotently — never overwrites, never deletes) so the project is
+        immediately ready for `buildrail skill create`/`buildrail pipeline
+        create`. Refuses to overwrite an existing configuration file —
+        re-running `init` on an already-configured project is a no-op
+        error, not a silent reset. Use `update_config` to change an
+        existing project's configuration instead.
+
+        `extensions_only=True` (`buildrail init --extensions`) skips
+        `buildrail.toml` entirely and only scaffolds `.buildrail/` — for a
+        project that was configured before this capability existed and
+        just needs the extensions directories added.
         """
+        if extensions_only:
+            created = _scaffold_project_extensions(project_root)
+            if created:
+                return Result(
+                    success=True,
+                    message=(
+                        f"Created {PROJECT_EXTENSIONS_DIRNAME}/ for project-local "
+                        "skills and pipelines."
+                    ),
+                )
+            return Result(
+                success=True,
+                message=f"{PROJECT_EXTENSIONS_DIRNAME}/ already exists. Nothing to do.",
+            )
+
         config_path = project_root / CONFIG_FILENAME
         if config_path.exists():
             return Result(
@@ -242,9 +380,13 @@ class CoreEngine:
             return Result(success=False, message=str(exc))
 
         write_config(project_root, candidate)
+        _scaffold_project_extensions(project_root)
         return Result(
             success=True,
-            message=f"Created {CONFIG_FILENAME} with provider='{candidate.provider}'.",
+            message=(
+                f"Created {CONFIG_FILENAME} with provider='{candidate.provider}'. "
+                f"Created {PROJECT_EXTENSIONS_DIRNAME}/ for project-local skills and pipelines."
+            ),
         )
 
     def update_config(self, project_root: Path, fields: dict[str, object]) -> Result:
@@ -492,23 +634,23 @@ class CoreEngine:
 
         return Result(success=passed, message=message)
 
-    def list_skills(self) -> Result:
-        """List every discovered built-in skill's name, version, and description."""
+    def list_skills(self, project_root: Path) -> Result:
+        """List every discovered skill's name, version, source, and description."""
         try:
-            manifests = SkillRegistry().list_skills()
+            manifests = SkillRegistry(project_root=project_root).list_skills()
         except SkillError as exc:
             return Result(success=False, message=str(exc))
 
         if not manifests:
             return Result(success=True, message="No skills found.")
 
-        lines = [f"{m.name} ({m.version}): {m.description}" for m in manifests]
+        lines = [f"{m.name} ({m.version}) [{m.source}]: {m.description}" for m in manifests]
         return Result(success=True, message="\n".join(lines))
 
-    def inspect_skill(self, name: str) -> Result:
-        """Show the validated manifest details for one built-in skill."""
+    def inspect_skill(self, project_root: Path, name: str) -> Result:
+        """Show the validated manifest details for one skill."""
         try:
-            manifest = SkillRegistry().get_manifest(name)
+            manifest = SkillRegistry(project_root=project_root).get_manifest(name)
         except SkillError as exc:
             return Result(success=False, message=str(exc))
 
@@ -519,9 +661,221 @@ class CoreEngine:
             f"description: {manifest.description}",
             f"entrypoint: {manifest.entrypoint}",
             f"requires_provider: {manifest.requires_provider}",
-            f"path: {manifest.path}",
+            f"source: {_skill_source_label(manifest, project_root)}",
         ]
         return Result(success=True, message="\n".join(lines))
+
+    def create_skill(
+        self,
+        project_root: Path,
+        name: str,
+        *,
+        description: str | None = None,
+        requires_provider: bool = False,
+    ) -> Result:
+        """Scaffold a new project-local skill under `.buildrail/skills/<name>/`."""
+        try:
+            skill_dir = (
+                scaffold_skill(
+                    project_root, name, description=description, requires_provider=requires_provider
+                )
+                if description is not None
+                else scaffold_skill(project_root, name, requires_provider=requires_provider)
+            )
+        except SkillScaffoldError as exc:
+            return Result(success=False, message=str(exc))
+        relative = _relative_to_project(project_root, skill_dir)
+        return Result(success=True, message=f"Created project-local skill at {relative}.")
+
+    def list_pipelines(self, project_root: Path) -> Result:
+        """List every discovered pipeline's name, version, source, and description."""
+        try:
+            definitions = PipelineRegistry(project_root=project_root).list_pipelines()
+        except PipelineError as exc:
+            return Result(success=False, message=str(exc))
+
+        if not definitions:
+            return Result(success=True, message="No pipelines found.")
+
+        lines = [
+            f"{d.name} ({d.version}) [{d.source}]: {d.description} ({len(d.steps)} step(s))"
+            for d in definitions
+        ]
+        return Result(success=True, message="\n".join(lines))
+
+    def inspect_pipeline(self, project_root: Path, name: str) -> Result:
+        """Show one pipeline's ordered steps, conditions, inputs, and provider requirement."""
+        try:
+            definition = PipelineRegistry(project_root=project_root).get_pipeline(name)
+        except PipelineError as exc:
+            return Result(success=False, message=str(exc))
+
+        lines = [
+            f"name: {definition.name}",
+            f"version: {definition.version}",
+            f"source: {_pipeline_source_label(definition, project_root)}",
+            f"description: {definition.description}",
+            f"requires_provider: {definition.requires_provider}",
+            "steps:",
+        ]
+        for step in definition.steps:
+            condition = step.skip_condition or "always"
+            line = f"  - {step.name} (condition: {condition})"
+            if step.inputs:
+                inputs = ", ".join(f"{k}={v}" for k, v in step.inputs.items())
+                line += f" inputs: {inputs}"
+            lines.append(line)
+        return Result(success=True, message="\n".join(lines))
+
+    def create_pipeline(self, project_root: Path, name: str) -> Result:
+        """Scaffold a new project-local pipeline manifest under `.buildrail/pipelines/`."""
+        try:
+            manifest_path = scaffold_pipeline(project_root, name)
+        except PipelineScaffoldError as exc:
+            return Result(success=False, message=str(exc))
+        relative = _relative_to_project(project_root, manifest_path)
+        return Result(success=True, message=f"Created project-local pipeline at {relative}.")
+
+    def run_named_pipeline(self, project_root: Path, name: str) -> Result:
+        """Resolve `name` through the Pipeline Registry and run it.
+
+        Built-in pipelines (`pre-commit`, `project-intelligence`) are
+        rejected here — their real orchestration is bespoke
+        (`run_pre_commit`/`run_project_intelligence`) and callers should
+        use those directly; this method exists to run project-local,
+        declarative pipelines generically.
+        """
+        try:
+            config = load_config(project_root)
+        except ConfigError as exc:
+            return Result(success=False, message=str(exc))
+
+        skill_registry = SkillRegistry(project_root=project_root)
+        try:
+            definition = PipelineRegistry(
+                project_root=project_root, skill_registry=skill_registry
+            ).get_pipeline(name)
+        except PipelineError as exc:
+            return Result(success=False, message=str(exc))
+
+        if definition.execution_kind != "declarative":
+            return Result(
+                success=False,
+                message=(
+                    f"'{name}' is a built-in pipeline with its own dedicated run command "
+                    f"(`buildrail run {name}`)."
+                ),
+            )
+
+        start = time.perf_counter()
+        store = ArtifactStore(project_root / config.artifact_root)
+        run_id = store.generate_run_id()
+
+        outcomes: list[NamedStepOutcome] = []
+        usage_provider: str | None = None
+        usage_model: str | None = None
+        usage_input_tokens = 0
+        usage_output_tokens = 0
+        usage_seen = False
+        stopped = False
+        for step in definition.steps:
+            if stopped:
+                outcomes.append(
+                    NamedStepOutcome(
+                        name=step.name,
+                        status="skipped",
+                        reason="a previous step failed",
+                        artifacts=(),
+                    )
+                )
+                continue
+
+            condition = step.skip_condition or "always"
+            should_run, skip_reason = _evaluate_step_condition(project_root, condition)
+            if not should_run:
+                outcomes.append(
+                    NamedStepOutcome(
+                        name=step.name, status="skipped", reason=skip_reason, artifacts=()
+                    )
+                )
+                continue
+
+            try:
+                skill_manifest = skill_registry.get_manifest(step.name)
+            except SkillNotFoundError as exc:
+                outcomes.append(
+                    NamedStepOutcome(name=step.name, status="failed", reason=str(exc), artifacts=())
+                )
+                stopped = True
+                continue
+
+            gateway: ProviderGateway | None = None
+            if skill_manifest.requires_provider:
+                try:
+                    provider = create_provider(
+                        _require_provider(config), model=config.anthropic_model
+                    )
+                except (ConfigError, ProviderError) as exc:
+                    outcomes.append(
+                        NamedStepOutcome(
+                            name=step.name, status="failed", reason=str(exc), artifacts=()
+                        )
+                    )
+                    stopped = True
+                    continue
+                gateway = ProviderGateway(provider)
+
+            step_context = PipelineContext(
+                run_id=run_id,
+                workdir=str(project_root),
+                inputs={key: str(value) for key, value in step.inputs.items()},
+                provider_name=config.provider if gateway is not None else None,
+                pipeline_name=definition.name,
+            )
+            step_result = PipelineRunner(
+                gateway, store, steps=(step.name,), registry=skill_registry
+            ).run(step_context)
+            # verify-project's SkillResponse always reports "success" — a failed
+            # check is a normal outcome recorded in output metadata, not a skill
+            # execution failure (see `_verify_outcome`'s docstring). Every other
+            # skill's pass/fail is exactly its PipelineResult.success.
+            outcome = (
+                _verify_outcome(step_result)
+                if step.name == "verify-project"
+                else _outcome_from_step(step_result, step.name)
+            )
+            outcomes.append(outcome)
+            if outcome.status == "failed":
+                stopped = True
+            elif step_result.success and step_result.steps:
+                for output in step_result.steps[-1].response.outputs.values():
+                    if output.usage is None:
+                        continue
+                    usage_seen = True
+                    usage_provider = config.provider
+                    usage_model = output.model_used or usage_model
+                    usage_input_tokens += output.usage.input_tokens
+                    usage_output_tokens += output.usage.output_tokens
+
+        provider_usage_totals: dict[str, object] | None = (
+            {
+                "provider": usage_provider,
+                "model": usage_model,
+                "input_tokens": usage_input_tokens,
+                "output_tokens": usage_output_tokens,
+            }
+            if usage_seen
+            else None
+        )
+        return self._finish_named_pipeline(
+            definition.name,
+            store,
+            run_id,
+            outcomes,
+            start,
+            provider_usage_totals,
+            source="project-local",
+        )
 
     def install_hook(self, project_root: Path) -> Result:
         """Install or update the Buildrail-managed Git pre-commit hook."""
@@ -604,6 +958,8 @@ class CoreEngine:
         ]
         if run.pipeline:
             lines.append(f"pipeline: {run.pipeline}")
+        if run.pipeline_source:
+            lines.append(f"pipeline_source: {run.pipeline_source}")
         if run.duration_seconds is not None:
             lines.append(f"duration_seconds: {run.duration_seconds:.2f}")
         for step in run.pipeline_steps:
@@ -707,7 +1063,7 @@ class CoreEngine:
             outcomes.append(review_outcome)
 
         return self._finish_named_pipeline(
-            "pre-commit", store, run_id, outcomes, start, provider_usage
+            "pre-commit", store, run_id, outcomes, start, provider_usage, source="built-in"
         )
 
     def _run_pre_commit_review(
@@ -800,6 +1156,8 @@ class CoreEngine:
         outcomes: list[NamedStepOutcome],
         start: float,
         provider_usage: dict[str, object] | None,
+        *,
+        source: str | None = None,
     ) -> Result:
         """Aggregate a named pipeline's step outcomes into one Result and run.json summary."""
         success = all(o.status != "failed" for o in outcomes)
@@ -827,6 +1185,7 @@ class CoreEngine:
             ],
             duration_seconds=pipeline_result.duration_seconds,
             provider_usage=provider_usage,
+            pipeline_source=source,
         )
 
         return Result(
@@ -1086,5 +1445,11 @@ class CoreEngine:
             analysis_file.unlink(missing_ok=True)
 
         return self._finish_named_pipeline(
-            "project-intelligence", store, run_id, outcomes, start, provider_usage
+            "project-intelligence",
+            store,
+            run_id,
+            outcomes,
+            start,
+            provider_usage,
+            source="built-in",
         )

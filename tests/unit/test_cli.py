@@ -778,3 +778,204 @@ def test_serve_propagates_the_service_module_exit_code(monkeypatch: pytest.Monke
     exit_code = main(["serve"])
 
     assert exit_code == 1
+
+
+# --- Project-local extensions: init, skill create, pipeline create/list/inspect, run ---
+
+
+def test_init_scaffolds_project_extensions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["init"])
+
+    assert exit_code == 0
+    assert (tmp_path / ".buildrail" / "skills").is_dir()
+    assert (tmp_path / ".buildrail" / "pipelines").is_dir()
+
+
+def test_init_extensions_flag_works_without_a_config_file(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["init", "--extensions"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "buildrail.toml" not in captured.out
+    assert not (tmp_path / "buildrail.toml").exists()
+    assert (tmp_path / ".buildrail" / "skills").is_dir()
+
+
+def test_skill_create_scaffolds_a_project_local_skill(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["skill", "create", "api-review"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "api-review" in captured.out
+    assert (tmp_path / ".buildrail" / "skills" / "api-review" / "skill.yaml").is_file()
+
+
+def test_skill_create_requires_provider_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["skill", "create", "needs-ai", "--requires-provider"])
+
+    assert exit_code == 0
+    manifest = (tmp_path / ".buildrail" / "skills" / "needs-ai" / "skill.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "requires_provider: true" in manifest
+
+
+def test_skill_create_fails_cleanly_for_an_invalid_name(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["skill", "create", "Not Valid"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+
+
+def test_skill_create_is_immediately_visible_to_skill_list(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    main(["skill", "create", "api-review"])
+    capsys.readouterr()
+
+    exit_code = main(["skill", "list"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "api-review" in captured.out
+    assert "[project-local]" in captured.out
+
+
+def test_skill_inspect_shows_a_project_relative_path(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    main(["skill", "create", "api-review"])
+    capsys.readouterr()
+
+    exit_code = main(["skill", "inspect", "api-review"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    normalized = captured.out.replace("\\", "/")
+    assert ".buildrail/skills/api-review" in normalized
+    assert str(tmp_path) not in captured.out
+
+
+def test_pipeline_create_scaffolds_a_project_local_pipeline(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["pipeline", "create", "quality"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "quality" in captured.out
+    assert (tmp_path / ".buildrail" / "pipelines" / "quality.yaml").is_file()
+
+
+def test_pipeline_create_fails_cleanly_for_an_invalid_name(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["pipeline", "create", "Not Valid"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+
+
+def test_pipeline_list_shows_built_ins_and_project_local(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    main(["pipeline", "create", "quality"])
+    capsys.readouterr()
+
+    exit_code = main(["pipeline", "list"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "pre-commit" in captured.out
+    assert "project-intelligence" in captured.out
+    assert "quality" in captured.out
+    assert "[project-local]" in captured.out
+
+
+def test_pipeline_inspect_shows_steps(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["pipeline", "inspect", "pre-commit"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "verify-project" in captured.out
+    assert "review-diff" in captured.out
+
+
+def test_pipeline_list_fails_cleanly_without_a_traceback_for_a_malformed_manifest(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    pipelines_dir = tmp_path / ".buildrail" / "pipelines"
+    pipelines_dir.mkdir(parents=True)
+    (pipelines_dir / "broken.yaml").write_text("name: [unclosed\n", encoding="utf-8")
+
+    exit_code = main(["pipeline", "list"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "broken.yaml" in captured.out
+
+
+def test_run_generic_dispatches_project_local_pipelines_through_the_registry(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".buildrail" / "pipelines").mkdir(parents=True)
+    (tmp_path / ".buildrail" / "pipelines" / "quality.yaml").write_text(
+        "name: quality\nversion: 0.1.0\ndescription: x\nsteps:\n  - skill: verify-project\n",
+        encoding="utf-8",
+    )
+    _mock_verify_checks_for_cli(monkeypatch)
+
+    exit_code = main(["run", "quality"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Pipeline: quality" in captured.out
+
+
+def test_run_unknown_pipeline_name_fails_without_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _init_python_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["run", "nonexistent-pipeline"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err == ""
+    assert "nonexistent-pipeline" in captured.out

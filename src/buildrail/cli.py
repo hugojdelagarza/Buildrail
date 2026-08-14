@@ -24,6 +24,11 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["fake", "anthropic"],
         help="Provider to configure (default: fake, works fully offline).",
     )
+    init_parser.add_argument(
+        "--extensions",
+        action="store_true",
+        help="Only create .buildrail/ for an already-configured project.",
+    )
 
     config_parser = subparsers.add_parser("config", help="Manage Buildrail configuration.")
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
@@ -54,11 +59,36 @@ def _build_parser() -> argparse.ArgumentParser:
         "verify", help="Run local format/lint/type/test checks and write a verification report."
     )
 
-    skill_parser = subparsers.add_parser("skill", help="Discover and inspect built-in skills.")
+    skill_parser = subparsers.add_parser(
+        "skill", help="Discover, inspect, and create built-in and project-local skills."
+    )
     skill_subparsers = skill_parser.add_subparsers(dest="skill_command", required=True)
     skill_subparsers.add_parser("list", help="List discovered skills.")
-    inspect_parser = skill_subparsers.add_parser("inspect", help="Show one skill's manifest.")
-    inspect_parser.add_argument("name", help="The skill's name.")
+    skill_inspect_parser = skill_subparsers.add_parser("inspect", help="Show one skill's manifest.")
+    skill_inspect_parser.add_argument("name", help="The skill's name.")
+    skill_create_parser = skill_subparsers.add_parser(
+        "create", help="Scaffold a new project-local skill under .buildrail/skills/."
+    )
+    skill_create_parser.add_argument("name", help="The new skill's name (e.g. 'api-review').")
+    skill_create_parser.add_argument(
+        "--requires-provider",
+        action="store_true",
+        help="Generate a template that uses the configured provider.",
+    )
+
+    pipeline_parser = subparsers.add_parser(
+        "pipeline", help="Discover, inspect, and create built-in and project-local pipelines."
+    )
+    pipeline_subparsers = pipeline_parser.add_subparsers(dest="pipeline_command", required=True)
+    pipeline_subparsers.add_parser("list", help="List discovered pipelines.")
+    pipeline_inspect_parser = pipeline_subparsers.add_parser(
+        "inspect", help="Show one pipeline's steps, conditions, and inputs."
+    )
+    pipeline_inspect_parser.add_argument("name", help="The pipeline's name.")
+    pipeline_create_parser = pipeline_subparsers.add_parser(
+        "create", help="Scaffold a new project-local pipeline under .buildrail/pipelines/."
+    )
+    pipeline_create_parser.add_argument("name", help="The new pipeline's name (e.g. 'quality').")
 
     hooks_parser = subparsers.add_parser("hooks", help="Manage the local Git pre-commit hook.")
     hooks_subparsers = hooks_parser.add_subparsers(dest="hooks_command", required=True)
@@ -82,28 +112,37 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     artifacts_inspect_parser.add_argument("artifact_id", help="The artifact's id.")
 
-    run_parser = subparsers.add_parser("run", help="Run a named pipeline.")
-    run_subparsers = run_parser.add_subparsers(dest="pipeline_name", required=True)
-    pre_commit_parser = run_subparsers.add_parser(
-        "pre-commit", help="Run verify-project, then review-diff if there are Git changes."
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run a named pipeline (built-in or project-local).",
+        description=(
+            "Run a pipeline by name — 'pre-commit' and 'project-intelligence' are built-in; "
+            "any other name resolves through the Pipeline Registry as a project-local "
+            "pipeline (.buildrail/pipelines/<name>.yaml). --base/--skip-review only apply to "
+            "pre-commit; --path/--enhance only apply to project-intelligence."
+        ),
     )
-    pre_commit_parser.add_argument(
-        "--base", dest="base_ref", default=None, help="Git ref to diff against."
+    run_parser.add_argument(
+        "pipeline_name", help="The pipeline to run, e.g. 'pre-commit' or a project-local name."
     )
-    pre_commit_parser.add_argument(
-        "--skip-review", action="store_true", help="Skip review-diff even if changes exist."
+    run_parser.add_argument(
+        "--base", dest="base_ref", default=None, help="Git ref to diff against (pre-commit only)."
     )
-    project_intelligence_parser = run_subparsers.add_parser(
-        "project-intelligence",
-        help="Run explain-project, generate-docs, and generate-diagram on one shared analysis.",
+    run_parser.add_argument(
+        "--skip-review",
+        action="store_true",
+        help="Skip review-diff even if changes exist (pre-commit only).",
     )
-    project_intelligence_parser.add_argument(
-        "--path", dest="path", default=None, help="Repository to analyze (default: cwd)."
+    run_parser.add_argument(
+        "--path",
+        dest="path",
+        default=None,
+        help="Repository to analyze (project-intelligence only; default: cwd).",
     )
-    project_intelligence_parser.add_argument(
+    run_parser.add_argument(
         "--enhance",
         action="store_true",
-        help="Enhance generated docs with the configured provider.",
+        help="Enhance generated docs with the configured provider (project-intelligence only).",
     )
 
     explain_parser = subparsers.add_parser(
@@ -172,7 +211,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     engine = CoreEngine()
 
     if args.command == "init":
-        result = engine.init_config(Path.cwd(), provider=args.provider)
+        result = engine.init_config(
+            Path.cwd(), provider=args.provider, extensions_only=args.extensions
+        )
     elif args.command == "config":
         result = engine.validate_config(Path.cwd())
     elif args.command == "provider":
@@ -187,9 +228,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = engine.verify_project(Path.cwd())
     elif args.command == "skill":
         if args.skill_command == "list":
-            result = engine.list_skills()
+            result = engine.list_skills(Path.cwd())
+        elif args.skill_command == "create":
+            result = engine.create_skill(
+                Path.cwd(), args.name, requires_provider=args.requires_provider
+            )
         else:
-            result = engine.inspect_skill(args.name)
+            result = engine.inspect_skill(Path.cwd(), args.name)
+    elif args.command == "pipeline":
+        if args.pipeline_command == "list":
+            result = engine.list_pipelines(Path.cwd())
+        elif args.pipeline_command == "create":
+            result = engine.create_pipeline(Path.cwd(), args.name)
+        else:
+            result = engine.inspect_pipeline(Path.cwd(), args.name)
     elif args.command == "hooks":
         if args.hooks_command == "install":
             result = engine.install_hook(Path.cwd())
@@ -209,10 +261,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = engine.run_project_intelligence(
                 Path.cwd(), path=args.path, enhance=args.enhance
             )
-        else:
+        elif args.pipeline_name == "pre-commit":
             result = engine.run_pre_commit(
                 Path.cwd(), base_ref=args.base_ref, skip_review=args.skip_review
             )
+        else:
+            result = engine.run_named_pipeline(Path.cwd(), args.pipeline_name)
     elif args.command == "explain":
         result = engine.explain_project(Path.cwd(), path=args.path)
     elif args.command == "dependency-audit":

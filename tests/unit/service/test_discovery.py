@@ -79,6 +79,8 @@ def test_skills_returns_all_built_in_skills_in_deterministic_order(tmp_path: Pat
     assert "review-diff" in names
     review_diff = next(s for s in body["skills"] if s["name"] == "review-diff")
     assert review_diff["requires_provider"] is True
+    assert review_diff["source"] == "built-in"
+    assert review_diff["project_relative_path"] is None
     assert review_diff["inputs"] == [
         {"name": "diff", "type": "file", "required": True, "description": "Path to a unified diff."}
     ]
@@ -89,6 +91,30 @@ def test_skills_works_without_a_configured_project(tmp_path: Path) -> None:
     status, _body = dispatch("GET", "/skills", {}, tmp_path)
 
     assert status == 200
+
+
+def _write_project_skill(project_root: Path, name: str) -> None:
+    skill_dir = project_root / ".buildrail" / "skills" / name
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "skill.yaml").write_text(
+        f'name: {name}\nversion: 0.1.0\nprotocol_version: "1.0"\n'
+        f'description: A test skill.\nentrypoint: "python skill.py"\ninputs: []\n'
+        f"outputs:\n  - name: summary\n    artifact_type: {name}\n",
+        encoding="utf-8",
+    )
+    (skill_dir / "skill.py").write_text("def run(request, provider):\n    pass\n", encoding="utf-8")
+
+
+def test_skills_includes_project_local_skills_with_relative_path(tmp_path: Path) -> None:
+    _write_project_skill(tmp_path, "my-skill")
+
+    status, body = dispatch("GET", "/skills", {}, tmp_path)
+
+    assert status == 200
+    mine = next(s for s in body["skills"] if s["name"] == "my-skill")
+    assert mine["source"] == "project-local"
+    assert mine["project_relative_path"] == ".buildrail/skills/my-skill"
+    assert str(tmp_path) not in mine["project_relative_path"]
 
 
 def test_pipelines_returns_pre_commit_and_project_intelligence(tmp_path: Path) -> None:
@@ -103,12 +129,47 @@ def test_pipelines_returns_pre_commit_and_project_intelligence(tmp_path: Path) -
     assert pre_commit["steps"][0]["skippable"] is False
     assert pre_commit["steps"][1]["skippable"] is True
     assert pre_commit["steps"][1]["skip_condition"] is not None
+    assert pre_commit["source"] == "built-in"
+    assert pre_commit["execution_kind"] == "code"
+    assert pre_commit["project_relative_path"] is None
 
 
 def test_pipelines_works_without_a_configured_project(tmp_path: Path) -> None:
     status, _body = dispatch("GET", "/pipelines", {}, tmp_path)
 
     assert status == 200
+
+
+def test_pipelines_includes_project_local_pipelines(tmp_path: Path) -> None:
+    pipelines_dir = tmp_path / ".buildrail" / "pipelines"
+    pipelines_dir.mkdir(parents=True)
+    (pipelines_dir / "quality.yaml").write_text(
+        "name: quality\nversion: 0.1.0\ndescription: x\nsteps:\n  - skill: verify-project\n",
+        encoding="utf-8",
+    )
+
+    status, body = dispatch("GET", "/pipelines", {}, tmp_path)
+
+    assert status == 200
+    quality = next(p for p in body["pipelines"] if p["name"] == "quality")
+    assert quality["source"] == "project-local"
+    assert quality["execution_kind"] == "declarative"
+    assert quality["project_relative_path"] == ".buildrail/pipelines/quality.yaml"
+    assert str(tmp_path) not in quality["project_relative_path"]
+    assert quality["steps"][0]["inputs"] == {}
+
+
+def test_project_reports_built_in_and_project_local_extension_counts(tmp_path: Path) -> None:
+    _write_project_skill(tmp_path, "my-skill")
+
+    status, body = dispatch("GET", "/project", {}, tmp_path)
+
+    assert status == 200
+    assert body["skill_count_built_in"] == 8
+    assert body["skill_count_project_local"] == 1
+    assert body["skill_count"] == 9
+    assert body["pipeline_count_built_in"] == 2
+    assert body["pipeline_count_project_local"] == 0
 
 
 def test_project_degrades_gracefully_without_config(tmp_path: Path) -> None:

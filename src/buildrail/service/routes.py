@@ -31,15 +31,19 @@ from buildrail.artifacts import (
 )
 from buildrail.config import BuildrailConfig, ConfigError, ConfigNotFoundError, load_config
 from buildrail.core import CoreEngine, Result
-from buildrail.providers import ProviderError, create_provider
-from buildrail.service.descriptors import (
-    COMMANDS,
-    PIPELINES,
-    CommandArgument,
-    CommandDescriptor,
-    PipelineDescriptor,
+from buildrail.pipeline import (
+    PipelineArgument,
+    PipelineDefinition,
+    PipelineError,
+    PipelineNotFoundError,
+    PipelineRegistry,
+    PipelineScaffoldError,
 )
-from buildrail.skills import SkillError, SkillManifest, SkillRegistry
+from buildrail.pipeline import create_pipeline as scaffold_pipeline
+from buildrail.providers import ProviderError, create_provider
+from buildrail.service.descriptors import COMMANDS, CommandArgument, CommandDescriptor
+from buildrail.skills import SkillError, SkillManifest, SkillRegistry, SkillScaffoldError
+from buildrail.skills import create_skill as scaffold_skill
 
 JsonObject = dict[str, Any]
 JsonBody = JsonObject | None
@@ -82,6 +86,18 @@ def dispatch(method: str, raw_path: str, body: JsonBody, project_root: Path) -> 
             return 400, {"error": "Request body must be a JSON object."}
         return _update_config(project_root, body)
 
+    # Scaffolding project-local skills/pipelines never requires a loaded
+    # buildrail.toml either — a fresh project may want to create one before
+    # its first `buildrail init` config write, same reasoning as above.
+    if method == "POST" and parts == ["skills"]:
+        if body is None:
+            return 400, {"error": "Request body must be a JSON object."}
+        return _create_skill(project_root, body)
+    if method == "POST" and parts == ["pipelines"]:
+        if body is None:
+            return 400, {"error": "Request body must be a JSON object."}
+        return _create_pipeline(project_root, body)
+
     try:
         config = load_config(project_root)
     except ConfigError as exc:
@@ -114,9 +130,9 @@ def _dispatch_config_free_get(parts: tuple[str, ...], project_root: Path) -> Res
     if parts == ("commands",):
         return _list_commands()
     if parts == ("skills",):
-        return _list_skills()
+        return _list_skills(project_root)
     if parts == ("pipelines",):
-        return _list_pipelines()
+        return _list_pipelines(project_root)
     if parts == ("project",):
         return _project_summary(project_root)
     return _config_summary(project_root)
@@ -176,6 +192,7 @@ def _run_summary_dict(run: RunSummary) -> JsonObject:
         "artifact_count": run.artifact_count,
         "artifact_types": list(run.artifact_types),
         "pipeline": run.pipeline,
+        "pipeline_source": run.pipeline_source,
     }
 
 
@@ -203,6 +220,7 @@ def _run_detail_dict(run: RunDetail) -> JsonObject:
         "status": run.status,
         "created_at": run.created_at,
         "pipeline": run.pipeline,
+        "pipeline_source": run.pipeline_source,
         "duration_seconds": run.duration_seconds,
         "pipeline_steps": [
             {
@@ -234,9 +252,22 @@ def _artifact_payload_dict(payload: ArtifactPayload) -> JsonObject:
 
 
 def _run_command(project_root: Path, name: str, body: JsonObject) -> Response:
-    if name not in _COMMAND_NAMES:
-        return 404, {"error": f"No command named '{name}'."}
     engine = CoreEngine()
+    if name not in _COMMAND_NAMES:
+        # Not a single-skill command or a built-in pipeline — the only other
+        # runnable thing behind this endpoint is a project-local pipeline
+        # (`PipelineRegistry`'s declarative kind); anything else is a 404.
+        try:
+            definition = PipelineRegistry(project_root=project_root).get_pipeline(name)
+        except PipelineNotFoundError:
+            return 404, {"error": f"No command named '{name}'."}
+        except PipelineError as exc:
+            return 500, {"error": str(exc)}
+        if definition.execution_kind != "declarative":
+            return 404, {"error": f"No command named '{name}'."}
+        result = engine.run_named_pipeline(project_root, name)
+        return 200, {"success": result.success, "message": result.message}
+
     try:
         result = _dispatch_command(engine, project_root, name, body)
     except TypeError as exc:
@@ -305,7 +336,15 @@ def _version() -> Response:
     }
 
 
-def _argument_dict(argument: CommandArgument) -> JsonObject:
+def _relative_to_project(project_root: Path, path: Path) -> str:
+    """Return `path` relative to `project_root` as a POSIX string — never a full local path."""
+    try:
+        return path.resolve().relative_to(project_root.resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _argument_dict(argument: CommandArgument | PipelineArgument) -> JsonObject:
     return {
         "name": argument.name,
         "type": argument.type,
@@ -333,13 +372,24 @@ def _list_commands() -> Response:
     return 200, {"commands": [_command_dict(c) for c in COMMANDS]}
 
 
-def _pipeline_dict(pipeline: PipelineDescriptor) -> JsonObject:
+def _pipeline_dict(pipeline: PipelineDefinition, project_root: Path) -> JsonObject:
     return {
         "name": pipeline.name,
+        "version": pipeline.version,
         "display_name": pipeline.display_name,
         "description": pipeline.description,
+        "source": pipeline.source,
+        "execution_kind": pipeline.execution_kind,
+        "project_relative_path": (
+            _relative_to_project(project_root, pipeline.path) if pipeline.path is not None else None
+        ),
         "steps": [
-            {"name": step.name, "skippable": step.skippable, "skip_condition": step.skip_condition}
+            {
+                "name": step.name,
+                "skippable": step.skippable,
+                "skip_condition": step.skip_condition,
+                "inputs": dict(step.inputs),
+            }
             for step in pipeline.steps
         ],
         "requires_provider": pipeline.requires_provider,
@@ -347,17 +397,27 @@ def _pipeline_dict(pipeline: PipelineDescriptor) -> JsonObject:
     }
 
 
-def _list_pipelines() -> Response:
-    return 200, {"pipelines": [_pipeline_dict(p) for p in PIPELINES]}
+def _list_pipelines(project_root: Path) -> Response:
+    try:
+        definitions = PipelineRegistry(project_root=project_root).list_pipelines()
+    except PipelineError as exc:
+        return 500, {"error": str(exc)}
+    return 200, {"pipelines": [_pipeline_dict(p, project_root) for p in definitions]}
 
 
-def _skill_manifest_dict(manifest: SkillManifest) -> JsonObject:
+def _skill_manifest_dict(manifest: SkillManifest, project_root: Path) -> JsonObject:
     return {
         "name": manifest.name,
         "version": manifest.version,
         "protocol_version": manifest.protocol_version,
         "description": manifest.description,
         "requires_provider": manifest.requires_provider,
+        "source": manifest.source,
+        "project_relative_path": (
+            _relative_to_project(project_root, manifest.path)
+            if manifest.source == "project-local"
+            else None
+        ),
         "inputs": [
             {
                 "name": i.name,
@@ -371,12 +431,94 @@ def _skill_manifest_dict(manifest: SkillManifest) -> JsonObject:
     }
 
 
-def _list_skills() -> Response:
+def _list_skills(project_root: Path) -> Response:
     try:
-        manifests = SkillRegistry().list_skills()
+        manifests = SkillRegistry(project_root=project_root).list_skills()
     except SkillError as exc:
         return 500, {"error": str(exc)}
-    return 200, {"skills": [_skill_manifest_dict(m) for m in manifests]}
+    return 200, {"skills": [_skill_manifest_dict(m, project_root) for m in manifests]}
+
+
+def _create_skill(project_root: Path, body: JsonObject) -> Response:
+    """Scaffold a project-local skill from structured input only.
+
+    Never accepts source code — the server always generates the
+    skill.yaml/skill.py template, the exact same function `buildrail
+    skill create` uses.
+    """
+    name = body.get("name")
+    if not isinstance(name, str) or not name:
+        return 400, {"error": "'name' must be a non-empty string."}
+    requires_provider = body.get("requires_provider", False)
+    if not isinstance(requires_provider, bool):
+        return 400, {"error": "'requires_provider' must be a boolean."}
+    description = body.get("description")
+    if description is not None and (not isinstance(description, str) or not description):
+        return 400, {"error": "'description' must be a non-empty string."}
+
+    try:
+        skill_dir = (
+            scaffold_skill(
+                project_root, name, description=description, requires_provider=requires_provider
+            )
+            if description is not None
+            else scaffold_skill(project_root, name, requires_provider=requires_provider)
+        )
+    except SkillScaffoldError as exc:
+        return 400, {"error": str(exc)}
+    return 201, {
+        "name": name,
+        "project_relative_path": _relative_to_project(project_root, skill_dir),
+    }
+
+
+def _create_pipeline(project_root: Path, body: JsonObject) -> Response:
+    """Scaffold a project-local pipeline from structured input only.
+
+    Never accepts raw YAML or a file path — `steps` is a plain list of
+    `{skill, condition}` objects, validated and rendered into YAML by
+    `buildrail.pipeline.scaffold.create_pipeline`, the exact same function
+    `buildrail pipeline create` uses.
+    """
+    name = body.get("name")
+    if not isinstance(name, str) or not name:
+        return 400, {"error": "'name' must be a non-empty string."}
+
+    description = body.get("description", "Project-local Buildrail pipeline")
+    if not isinstance(description, str) or not description:
+        return 400, {"error": "'description' must be a non-empty string."}
+
+    raw_steps = body.get("steps")
+    if raw_steps is None:
+        steps: list[tuple[str, str]] | None = None
+    else:
+        if not isinstance(raw_steps, list) or not raw_steps:
+            return 400, {"error": "'steps' must be a non-empty list."}
+        steps = []
+        for entry in raw_steps:
+            if not isinstance(entry, dict):
+                return 400, {"error": "Each step must be an object."}
+            skill = entry.get("skill")
+            if not isinstance(skill, str) or not skill:
+                return 400, {"error": "Each step needs a non-empty 'skill'."}
+            condition = entry.get("condition", "always")
+            if not isinstance(condition, str):
+                return 400, {"error": "A step's 'condition' must be a string."}
+            steps.append((skill, condition))
+
+    try:
+        if steps is None:
+            manifest_path = scaffold_pipeline(project_root, name, description=description)
+        else:
+            manifest_path = scaffold_pipeline(
+                project_root, name, description=description, steps=steps
+            )
+    except PipelineScaffoldError as exc:
+        return 400, {"error": str(exc)}
+    return 201, {
+        "name": name,
+        "project_relative_path": _relative_to_project(project_root, manifest_path),
+    }
 
 
 def _provider_ready(config: BuildrailConfig) -> bool:
@@ -420,6 +562,28 @@ def _latest_statistics(reader: ArtifactReader, runs: tuple[RunSummary, ...]) -> 
     return None
 
 
+def _extension_counts(project_root: Path) -> JsonObject:
+    """Built-in vs. project-local skill/pipeline counts, for the frontend's
+    "Project Extensions" summary — degrades to all-zero counts rather than
+    failing the whole `/project` response if a manifest is malformed."""
+    try:
+        skills = SkillRegistry(project_root=project_root).list_skills()
+    except SkillError:
+        skills = ()
+    try:
+        pipelines = PipelineRegistry(project_root=project_root).list_pipelines()
+    except PipelineError:
+        pipelines = ()
+    return {
+        "skill_count": len(skills),
+        "skill_count_built_in": sum(1 for s in skills if s.source == "built-in"),
+        "skill_count_project_local": sum(1 for s in skills if s.source == "project-local"),
+        "pipeline_count": len(pipelines),
+        "pipeline_count_built_in": sum(1 for p in pipelines if p.source == "built-in"),
+        "pipeline_count_project_local": sum(1 for p in pipelines if p.source == "project-local"),
+    }
+
+
 def _project_summary(project_root: Path) -> Response:
     try:
         config = load_config(project_root)
@@ -431,11 +595,10 @@ def _project_summary(project_root: Path) -> Response:
             "artifact_root": None,
             "provider": None,
             "provider_ready": False,
-            "skill_count": len(SkillRegistry().list_skills()),
-            "pipeline_count": len(PIPELINES),
             "recent_run_count": 0,
             "latest_run": None,
             "statistics": None,
+            **_extension_counts(project_root),
         }
 
     reader = ArtifactReader(project_root / config.artifact_root)
@@ -451,11 +614,10 @@ def _project_summary(project_root: Path) -> Response:
         "artifact_root": config.artifact_root,
         "provider": config.provider,
         "provider_ready": _provider_ready(config),
-        "skill_count": len(SkillRegistry().list_skills()),
-        "pipeline_count": len(PIPELINES),
         "recent_run_count": len(runs),
         "latest_run": _run_summary_dict(runs[0]) if runs else None,
         "statistics": _latest_statistics(reader, runs),
+        **_extension_counts(project_root),
     }
 
 

@@ -15,7 +15,9 @@ from buildrail.skills.registry import (
     SkillManifestInput,
     SkillManifestOutput,
     SkillRegistry,
+    SkillSource,
 )
+from buildrail.skills.scaffold import SkillScaffoldError, create_skill
 
 __all__ = [
     "DEFAULT_SKILLS_DIR",
@@ -30,4 +32,7 @@ __all__ = [
     "SkillManifestOutput",
     "SkillNotFoundError",
     "SkillRegistry",
+    "SkillScaffoldError",
+    "SkillSource",
+    "create_skill",
 ]
