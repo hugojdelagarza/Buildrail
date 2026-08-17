@@ -213,3 +213,58 @@ Before any commit — not just tagged releases — check for:
 This is the same checklist `CLAUDE.md`'s Commit Boundaries section
 requires an AI agent to run before recommending a commit, and it holds
 for human commits too.
+
+## 9. Claude Code Development Skills
+
+Buildrail has three distinct things that are all called "skills" —
+keeping them apart matters:
+
+| Location | What it is | Who runs it |
+|---|---|---|
+| `.claude/skills/` | Claude Code workflows for *developing* Buildrail itself (verification, review, doc sync, commits) | Claude Code, in this repo, as a contributor tool |
+| `skills/` | Buildrail's own built-in runtime skills (`review-diff`, `test-report`, etc.) | Buildrail's Skill Registry, via the CLI/service |
+| `.buildrail/skills/` | Project-local runtime skills for a project *using* Buildrail | Buildrail's Skill Registry, in whatever repo Buildrail is run against |
+
+`.claude/skills/` is repository-local developer infrastructure — it is
+committed and travels with the repo via GitHub, same as any other file
+under version control, but it has no effect on Buildrail's own runtime
+behavior. It never touches `~/.claude/` (the user's global Claude Code
+configuration) and is not a Buildrail skill in the `docs/skills.md`
+sense; it's not discovered by `SkillRegistry`, doesn't use the
+`SkillRequest`/`SkillResponse` protocol, and isn't reachable via
+`buildrail skill list`.
+
+The current set, each a `.claude/skills/<name>/SKILL.md`:
+
+- **`finish-feature`** — the feature-completion workflow: scope
+  detection, backend/frontend/Rust verification, CLI and browser
+  dogfooding (Fake provider only), cleanup, a final safety pass, and a
+  Summary/Verification/Git report. Never commits or pushes.
+- **`buildrail-security-review`** — a read-only, Buildrail-specific
+  security audit of the current diff (subprocess safety, path
+  handling, secrets, the Provider Gateway boundary, the project-local
+  skill trust boundary). Named with a `buildrail-` prefix to avoid
+  colliding with Claude Code's own bundled `security-review` skill.
+  Runs as a forked subagent so a large review doesn't fill the main
+  session's context.
+- **`sync-docs`** — audits only the documentation plausibly affected by
+  the current change against the actual implementation, and fixes
+  stale claims directly. Never marks a roadmap phase complete unless
+  the implementation genuinely fulfills it. Also runs forked.
+- **`review-change`** — the final engineering review of a diff
+  (architecture, correctness, duplication, regressions, tests,
+  determinism, scope creep). Read-only by default; reports blockers
+  versus optional improvements without manufacturing nitpicks. Also
+  runs forked.
+- **`commit-feature`** — the Git mutation workflow, used only after the
+  user has explicitly approved committing (and, separately, pushing).
+  Stages an exact, enumerated file list, never `git add -A`/`git add
+  .`, never force-pushes or amends, and confirms both commit and push
+  approval independently before acting. Configured so Claude cannot
+  invoke it on its own initiative — it requires deliberate invocation.
+
+These are small, single-file skills by design — no shared/bundled
+resources beyond each skill's own `SKILL.md`; the modest amount of
+overlapping safety guidance (e.g. the secrets/temp-file checklist) is
+duplicated rather than factored into a shared file, since the overlap
+is small enough that an abstraction would cost more than it saves.

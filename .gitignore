@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Claude Code local/session state (repo-local dev skills under .claude/skills/ ARE committed)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
 # Python
 __pycache__/
 *.py[cod]

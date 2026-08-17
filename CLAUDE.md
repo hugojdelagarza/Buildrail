@@ -127,39 +127,26 @@ operational rule for any AI agent acting in this repo.
   approval.** No `add`, `commit`, `push`, `reset`, `checkout`, `clean`,
   branch deletion, or tagging. Read-only commands (`status`, `diff`,
   `log`, `ls-files`) are always fine to run to inform a recommendation.
-- **Before recommending, always run/inspect:** `git status`, `git diff
-  --check`, `git diff`, `git diff --cached` (if anything is staged), and
-  the changed/untracked files for secrets, credentials, API keys, local
-  paths, or other unsafe content (`docs/git-workflow.md` §8). If
-  anything looks unsafe, stop and explain why instead of recommending
-  the commit.
+- **Before recommending a commit, always scan** the changed/untracked
+  files for secrets, credentials, API keys, local paths, or other
+  unsafe content (`docs/git-workflow.md` §8). If anything looks unsafe,
+  stop and explain why instead of recommending the commit. These two
+  rules hold regardless of whether any skill below is loaded.
 - **This project is developed from Windows Command Prompt.** Every
   command given must work in CMD — no `$(...)`, heredocs, or `export`.
   Use multiple `-m` flags for a multi-line commit message, and `set` for
   environment variables (`docs/git-workflow.md` §5).
-- **At the boundary, respond using the Completion Summary Format
-  below.**
+- **Use the project Claude skills for the mechanics.**
+  `.claude/skills/` (`docs/git-workflow.md` §9) encodes the actual
+  verification, review, documentation-sync, and commit/push procedures
+  — reach for `finish-feature` when a slice seems done, `review-change`
+  and `buildrail-security-review` before recommending a commit on
+  anything nontrivial, `sync-docs` when a doc could be stale, and
+  `commit-feature` only after the user has explicitly approved
+  committing (it never invokes itself). Report the boundary with a
+  short Summary (2-5 bullets) / Verification (format, lint, types,
+  tests, relevant runtime check) / Git (safety status, recommended
+  message, exact commands) structure even without a skill loaded — no
+  changelog prose, no restating the whole architecture.
 - **Stop after each clean slice.** Land one coherent change, recommend
   the commit, and wait for approval before starting the next one.
-
-## Completion Summary Format
-
-Keep completion summaries concise by default:
-
-```
-Summary
-- 2-5 bullets on the meaningful changes
-
-Verification
-- format / lint / mypy / tests / relevant runtime check
-
-Git
-- safety status
-- recommended commit message
-- exact commands
-```
-
-Don't repeat every file's purpose when it's obvious from the diff,
-restate the whole architecture, or add celebratory commentary. Expand
-beyond this structure only when a decision is risky, surprising, or
-architectural — a tradeoff worth flagging, not a status update.
